@@ -1,5 +1,5 @@
 [package]
-name = "firefly-cardanosigner"
+name = "firefly-server"
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
@@ -7,8 +7,8 @@ repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
 [dependencies]
 aide = { version = "0.13", features = ["axum"] }
 axum = "0.7"
+axum-swagger-ui = "0.3"
 anyhow = "1"
-clap = { version = "4", features = ["derive"] }
-firefly-server = { path = "../firefly-server" }
+config = "0.14"
 serde = "1"
-tokio = { version = "1", features = ["full"] }
+tokio = "1"

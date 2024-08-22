@@ -404,9 +404,8 @@ dependencies = [
  "aide",
  "anyhow",
  "axum",
- "axum-swagger-ui",
  "clap",
- "config",
+ "firefly-server",
  "serde",
  "tokio",
 ]
@@ -414,6 +413,28 @@ dependencies = [
 [[package]]
 name = "firefly-cardanosigner"
 version = "0.1.0"
+dependencies = [
+ "aide",
+ "anyhow",
+ "axum",
+ "clap",
+ "firefly-server",
+ "serde",
+ "tokio",
+]
+
+[[package]]
+name = "firefly-server"
+version = "0.1.0"
+dependencies = [
+ "aide",
+ "anyhow",
+ "axum",
+ "axum-swagger-ui",
+ "config",
+ "serde",
+ "tokio",
+]
 
 [[package]]
 name = "fnv"

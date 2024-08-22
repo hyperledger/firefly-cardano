@@ -1,31 +1,22 @@
 use std::path::PathBuf;
 
-use aide::{
-    axum::{routing::get, ApiRouter, IntoApiResponse},
-    openapi::{Info, OpenApi},
-};
+use aide::axum::{routing::get, ApiRouter, IntoApiResponse};
 use anyhow::Result;
 use axum::{
     extract::{
         ws::{Message, WebSocket},
         WebSocketUpgrade,
     },
-    response::{Html, Response},
-    Extension, Json,
+    response::Response,
+    Json,
 };
-use axum_swagger_ui::swagger_ui;
 use clap::Parser;
 use config::load_config;
-use tokio::net::TcpListener;
 
 mod config;
 
 async fn health() -> impl IntoApiResponse {
     Json("Hello, world!")
-}
-
-async fn serve_api(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
-    Json(api)
 }
 
 async fn handle_socket(mut socket: WebSocket) {
@@ -79,35 +70,9 @@ async fn main() -> Result<()> {
     let config_file = args.config_file.as_deref();
     let config = load_config(config_file)?;
 
-    let app = ApiRouter::new()
+    let router = ApiRouter::new()
         .api_route("/api/health", get(health))
-        .route("/api/ws", axum::routing::get(handle_socket_upgrade))
-        .route("/api/openapi.json", get(serve_api))
-        .route(
-            "/api",
-            get(|| async { Html(swagger_ui("/api/openapi.json")) }),
-        );
+        .route("/api/ws", axum::routing::get(handle_socket_upgrade));
 
-    let mut api = OpenApi {
-        info: Info {
-            description: Some("Firefly Cardano Connector".to_string()),
-            ..Info::default()
-        },
-        ..OpenApi::default()
-    };
-
-    let listener = TcpListener::bind(format!("{}:{}", config.api.address, config.api.port)).await?;
-
-    axum::serve(
-        listener,
-        app
-            // Generate the documentation.
-            .finish_api(&mut api)
-            // Expose the documentation to the handlers.
-            .layer(Extension(api))
-            .into_make_service(),
-    )
-    .await?;
-
-    Ok(())
+    firefly_server::server::serve(&config.api, router).await
 }

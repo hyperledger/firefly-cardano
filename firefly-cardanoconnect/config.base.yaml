@@ -1,3 +1,4 @@
 api:
-  address: "127.0.0.1"
-  port: 5008
+  port: 5018
+  info:
+    description: Firefly Cardano Connector
