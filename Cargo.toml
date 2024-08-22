@@ -4,3 +4,5 @@ members = [
     "firefly-cardanoconnect",
     "firefly-cardanosigner",
 ]
+
+resolver = "2"

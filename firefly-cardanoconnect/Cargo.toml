@@ -5,3 +5,11 @@ edition = "2021"
 repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
 
 [dependencies]
+aide = { version = "0.13", features = ["axum"] }
+anyhow = "1"
+axum = { version = "0.7", features = ["ws"] }
+axum-swagger-ui = "0.3"
+clap = { version = "4", features = ["derive"] }
+config = "0.14"
+serde = "1"
+tokio = { version = "1", features = ["full"] }
