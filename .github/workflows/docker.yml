@@ -57,8 +57,7 @@ jobs:
           cache-to: type=gha,mode=max
           context: .
           file: ./Dockerfile
-          outputs: type=image
-          tags: firefly-cardano-builder
+          outputs: type=image,name=firefly-cardano-builder
 
       - name: Extract Docker metadata for firefly-cardanoconnect
         id: firefly-cardanoconnect-meta
