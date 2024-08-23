@@ -27,5 +27,5 @@ async fn main() -> Result<()> {
     let config = load_config(config_file)?;
 
     let router = ApiRouter::new().api_route("/api/health", get(health));
-    firefly_server::server::serve(&config.server, router).await
+    firefly_server::server::serve(&config.api, router).await
 }

@@ -6,7 +6,7 @@ use config::{Config, Environment, File, FileFormat, FileSourceFile};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
-pub struct ServerConfig {
+pub struct ApiConfig {
     pub address: String,
     pub port: u16,
     pub info: Option<Info>,

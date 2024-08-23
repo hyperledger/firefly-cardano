@@ -1,3 +1,4 @@
-server:
+api:
+  port: 8555
   info:
-    description: FireFly Cardano Signer
+    title: FireFly Cardano Signer

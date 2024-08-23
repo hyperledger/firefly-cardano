@@ -1,4 +1,4 @@
 api:
   port: 5018
   info:
-    description: Firefly Cardano Connector
+    title: Firefly Cardano Connector
