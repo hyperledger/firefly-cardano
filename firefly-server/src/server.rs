@@ -1,6 +1,7 @@
 use aide::{
     axum::{routing::get, ApiRouter, IntoApiResponse},
     openapi::OpenApi,
+    NoApi,
 };
 use anyhow::Result;
 use axum::{response::Html, Extension, Json};
@@ -10,7 +11,7 @@ use tokio::{net::TcpListener, signal};
 use crate::config::ApiConfig;
 
 async fn serve_api(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
-    Json(api)
+    NoApi(Json(api))
 }
 
 pub async fn serve(config: &ApiConfig, router: ApiRouter) -> Result<()> {
