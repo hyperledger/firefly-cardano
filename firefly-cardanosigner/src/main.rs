@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use aide::axum::{
     routing::{get, post},
@@ -8,9 +8,11 @@ use anyhow::Result;
 use axum::Json;
 use clap::Parser;
 use config::load_config;
+use keys::KeyStore;
 use routes::sign_transaction;
 
 mod config;
+mod keys;
 mod routes;
 
 async fn health() -> impl IntoApiResponse {
@@ -24,6 +26,11 @@ struct Args {
     pub config_file: Option<PathBuf>,
 }
 
+#[derive(Clone)]
+struct AppState {
+    key_store: Arc<KeyStore>,
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -31,8 +38,14 @@ async fn main() -> Result<()> {
     let config_file = args.config_file.as_deref();
     let config = load_config(config_file)?;
 
+    let key_store = KeyStore::default();
+    let state = AppState {
+        key_store: Arc::new(key_store),
+    };
+
     let router = ApiRouter::new()
         .api_route("/api/health", get(health))
-        .api_route("/api/sign", post(sign_transaction));
+        .api_route("/api/sign", post(sign_transaction))
+        .with_state(state);
     firefly_server::server::serve(&config.api, router).await
 }

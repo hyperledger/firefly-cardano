@@ -1,7 +1,9 @@
-use axum::Json;
+use axum::{extract::State, Json};
 use firefly_server::error::{ApiError, ApiResult};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
+
+use crate::AppState;
 
 #[derive(Deserialize, JsonSchema)]
 pub struct SignTransactionRequest {
@@ -18,11 +20,13 @@ pub struct SignTransactionResponse {
 }
 
 pub async fn sign_transaction(
+    State(AppState { key_store }): State<AppState>,
     Json(req): Json<SignTransactionRequest>,
 ) -> ApiResult<Json<SignTransactionResponse>> {
-    if req.address.is_empty() {
-        return Err(ApiError::not_found("No address provided"));
-    }
+    let Some(_private_key) = key_store.find_signing_key(&req.address)? else {
+        return Err(ApiError::not_found("No key found for the given address"));
+    };
+
     Ok(Json(SignTransactionResponse {
         transaction: req.transaction,
     }))

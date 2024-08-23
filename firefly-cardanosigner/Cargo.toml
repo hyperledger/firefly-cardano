@@ -10,6 +10,9 @@ axum = "0.7"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
+pallas-crypto = "0.30"
+pallas-wallet = "0.30"
+rand = "0.8"
 schemars = "0.8"
 serde = "1"
 tokio = { version = "1", features = ["full"] }
