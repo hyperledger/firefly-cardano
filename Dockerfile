@@ -27,3 +27,14 @@ COPY Cargo.toml Cargo.lock /app/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo build --release
+
+# Define separate targets for each service
+FROM alpine AS firefly-cardanoconnect
+WORKDIR /app
+COPY --from=builder /app/target/release/firefly-cardanoconnect /app/
+CMD ["./firefly-cardanoconnect"]
+
+FROM alpine AS firefly-cardanosigner
+WORKDIR /app
+COPY --from=builder /app/target/release/firefly-cardanosigner /app/
+CMD ["./firefly-cardanosigner"]

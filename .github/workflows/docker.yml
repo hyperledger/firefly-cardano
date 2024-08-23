@@ -49,16 +49,6 @@ jobs:
             }
           skip-extraction: ${{ steps.cache.outputs.cache-hit }}
 
-      - name: Build base Docker image
-        id: build
-        uses: docker/build-push-action@3b5e8027fcad23fda98b2e3ac259d8d67585f671
-        with:
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          context: .
-          file: ./Dockerfile
-          outputs: type=image,name=firefly-cardano-builder
-
       - name: Extract Docker metadata for firefly-cardanoconnect
         id: firefly-cardanoconnect-meta
         uses: docker/metadata-action@9ec57ed1fcdbf14dcef7dfbe97b2010124a938b7
@@ -71,7 +61,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           context: .
-          file: ./firefly-cardanoconnect/Dockerfile
+          file: ./Dockerfile
+          target: firefly-cardanoconnect
           push: true
           tags: ${{ steps.firefly-cardanoconnect-meta.outputs.tags }}
           labels: ${{ steps.firefly-cardanoconnect-meta.outputs.labels }}
@@ -88,7 +79,8 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           context: .
-          file: ./firefly-cardanosigner/Dockerfile
+          file: ./Dockerfile
+          target: firefly-cardanosigner
           push: true
           tags: ${{ steps.firefly-cardanosigner-meta.outputs.tags }}
           labels: ${{ steps.firefly-cardanosigner-meta.outputs.labels }}
