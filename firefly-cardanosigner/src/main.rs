@@ -1,12 +1,17 @@
 use std::path::PathBuf;
 
-use aide::axum::{routing::get, ApiRouter, IntoApiResponse};
+use aide::axum::{
+    routing::{get, post},
+    ApiRouter, IntoApiResponse,
+};
 use anyhow::Result;
 use axum::Json;
 use clap::Parser;
 use config::load_config;
+use routes::sign_transaction;
 
 mod config;
+mod routes;
 
 async fn health() -> impl IntoApiResponse {
     Json("Hello, world!")
@@ -26,6 +31,8 @@ async fn main() -> Result<()> {
     let config_file = args.config_file.as_deref();
     let config = load_config(config_file)?;
 
-    let router = ApiRouter::new().api_route("/api/health", get(health));
+    let router = ApiRouter::new()
+        .api_route("/api/health", get(health))
+        .api_route("/api/sign", post(sign_transaction));
     firefly_server::server::serve(&config.api, router).await
 }

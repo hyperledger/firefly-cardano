@@ -419,6 +419,7 @@ dependencies = [
  "axum",
  "clap",
  "firefly-server",
+ "schemars",
  "serde",
  "tokio",
 ]

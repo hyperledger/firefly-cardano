@@ -10,5 +10,6 @@ axum = "0.7"
 anyhow = "1"
 clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
+schemars = "0.8"
 serde = "1"
 tokio = { version = "1", features = ["full"] }
