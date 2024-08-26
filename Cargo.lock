@@ -190,6 +190,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "base58"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6107fe1be6682a68940da878d9e9f5e90ca5745b3dec9fd1bb393c8777d4f581"
+
+[[package]]
 name = "base64"
 version = "0.21.7"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -458,11 +464,15 @@ dependencies = [
  "axum",
  "clap",
  "firefly-server",
+ "hex",
+ "minicbor",
  "pallas-crypto",
+ "pallas-primitives",
  "pallas-wallet",
  "rand",
  "schemars",
  "serde",
+ "serde_json",
  "tokio",
 ]
 
@@ -939,6 +949,22 @@ dependencies = [
  "rand_core",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "pallas-primitives"
+version = "0.30.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6c9458b82f0203aaadfb4bf996a7dbc5407caf8e31f035f5268be1f10e174578"
+dependencies = [
+ "base58",
+ "bech32",
+ "hex",
+ "log",
+ "pallas-codec",
+ "pallas-crypto",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

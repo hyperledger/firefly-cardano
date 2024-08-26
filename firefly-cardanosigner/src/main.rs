@@ -38,7 +38,10 @@ async fn main() -> Result<()> {
     let config_file = args.config_file.as_deref();
     let config = load_config(config_file)?;
 
-    let key_store = KeyStore::default();
+    let key_store = match &config.file_wallet {
+        Some(file_wallet_config) => KeyStore::from_fs(file_wallet_config)?,
+        None => KeyStore::default(),
+    };
     let state = AppState {
         key_store: Arc::new(key_store),
     };

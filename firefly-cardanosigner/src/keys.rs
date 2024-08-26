@@ -1,27 +1,95 @@
-use std::collections::HashMap;
+use std::{collections::HashMap, fs};
 
-use anyhow::Result;
-use pallas_crypto::key::ed25519::SecretKey;
+use anyhow::{anyhow, bail, Context, Result};
+use pallas_crypto::key::ed25519::{SecretKey, SecretKeyExtended};
+use pallas_primitives::conway::PlutusData::BoundedBytes;
 use pallas_wallet::PrivateKey;
-use rand::thread_rng;
+use serde::Deserialize;
 
+use crate::config::FileWalletConfig;
+
+#[derive(Default)]
 pub struct KeyStore {
     keys: HashMap<String, PrivateKey>,
 }
 
-const FAKE_ADDR: &str = "addr1_fake";
-
-impl Default for KeyStore {
-    fn default() -> Self {
-        let key = SecretKey::new(thread_rng());
-        let mut keys = HashMap::new();
-        keys.insert(FAKE_ADDR.to_string(), PrivateKey::Normal(key));
-        Self { keys }
-    }
+#[derive(Deserialize)]
+struct SigningKeyContents {
+    #[serde(rename = "type")]
+    type_: String,
+    #[serde(rename = "cborHex")]
+    cbor_hex: String,
 }
 
 impl KeyStore {
+    pub fn from_fs(config: &FileWalletConfig) -> Result<Self> {
+        let mut keys = HashMap::new();
+
+        let dir_entries = fs::read_dir(&config.path).context("could not read fileWallet.path")?;
+        for dir_entry_res in dir_entries {
+            let dir_entry = dir_entry_res.context("could not read directory entry")?;
+            let Ok(filename) = dir_entry.file_name().into_string() else {
+                // If the filename isn't a valid string, it's definitely not a valid address
+                continue;
+            };
+            let Some(address) = filename.strip_suffix(".skey") else {
+                // If the filename doesn't end in .skey, we don't consider it as a key
+                continue;
+            };
+            let raw_contents = std::fs::read_to_string(dir_entry.path())?;
+            let contents: SigningKeyContents = serde_json::from_str(&raw_contents)?;
+            let cbor =
+                hex::decode(&contents.cbor_hex).context("could not decode signing key hex")?;
+            let key = match contents.type_.as_str() {
+                "PaymentSigningKeyShelley_ed25519" => read_normal_key(cbor),
+                "PaymentExtendedSigningKeyShelley_ed25519_bip32" => read_extended_key(cbor),
+                type_ => Err(anyhow!("Unrecognized key type: {type_}")),
+            }
+            .context("could not read signing key")?;
+
+            keys.insert(address.to_string(), key);
+        }
+        Ok(Self { keys })
+    }
+
     pub fn find_signing_key(&self, address: &str) -> Result<Option<&PrivateKey>> {
         Ok(self.keys.get(address))
     }
+}
+
+fn read_normal_key(cbor: Vec<u8>) -> Result<PrivateKey> {
+    let bytes: Vec<u8> = match minicbor::decode(&cbor)? {
+        BoundedBytes(bytes) => bytes.into(),
+        _ => bail!("Invalid CBOR"),
+    };
+    if bytes.len() != SecretKey::SIZE {
+        bail!(
+            "secret keys must have {} bytes, this key has {}",
+            SecretKey::SIZE,
+            bytes.len()
+        );
+    }
+    let mut key_bytes = [0; 32];
+    key_bytes.copy_from_slice(&bytes);
+    let secret_key: SecretKey = key_bytes.into();
+    Ok(PrivateKey::Normal(secret_key))
+}
+
+fn read_extended_key(cbor: Vec<u8>) -> Result<PrivateKey> {
+    let bytes: Vec<u8> = match minicbor::decode(&cbor)? {
+        BoundedBytes(bytes) => bytes.into(),
+        _ => bail!("Invalid CBOR"),
+    };
+    // The first 64 bytes are the signing key.
+    // The next 32 bytes are the verification key, and the last 32 are the chain code.
+    if bytes.len() != 128 {
+        bail!(
+            "extended secret keys must have 128 bytes, this key has {}",
+            bytes.len()
+        );
+    }
+    let mut key_bytes = [0; SecretKeyExtended::SIZE];
+    key_bytes.copy_from_slice(&bytes[0..SecretKeyExtended::SIZE]);
+    let secret_key = SecretKeyExtended::from_bytes(key_bytes)?;
+    Ok(PrivateKey::Extended(secret_key))
 }

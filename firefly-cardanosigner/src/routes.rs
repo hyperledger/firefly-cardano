@@ -23,11 +23,13 @@ pub async fn sign_transaction(
     State(AppState { key_store }): State<AppState>,
     Json(req): Json<SignTransactionRequest>,
 ) -> ApiResult<Json<SignTransactionResponse>> {
-    let Some(_private_key) = key_store.find_signing_key(&req.address)? else {
+    let Some(private_key) = key_store.find_signing_key(&req.address)? else {
         return Err(ApiError::not_found("No key found for the given address"));
     };
 
+    let signed = private_key.sign(req.transaction);
+
     Ok(Json(SignTransactionResponse {
-        transaction: req.transaction,
+        transaction: signed.to_string(),
     }))
 }
