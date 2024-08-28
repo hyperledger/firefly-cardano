@@ -5,13 +5,14 @@ use firefly_server::config::{self, ApiConfig};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FireflySignerConfig {
     pub api: ApiConfig,
-    #[serde(rename = "filewallet")]
     pub file_wallet: Option<FileWalletConfig>,
 }
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct FileWalletConfig {
     pub path: PathBuf,
 }

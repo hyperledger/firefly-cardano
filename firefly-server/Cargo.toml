@@ -9,7 +9,7 @@ aide = { version = "0.13", features = ["axum"] }
 axum = "0.7"
 axum-swagger-ui = "0.3"
 anyhow = "1"
-config = "0.14"
+figment = { version = "0.10", features = ["yaml", "env"] }
 home = "0.5"
 serde = "1"
 tokio = "1"

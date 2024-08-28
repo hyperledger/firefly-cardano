@@ -2,10 +2,14 @@ use std::path::Path;
 
 use aide::openapi::Info;
 use anyhow::Result;
-use config::{Config, Environment, File, FileFormat, FileSourceFile};
+use figment::{
+    providers::{Data, Env, Format, Yaml},
+    Figment,
+};
 use serde::Deserialize;
 
 #[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
 pub struct ApiConfig {
     pub address: String,
     pub port: u16,
@@ -16,33 +20,32 @@ pub fn load_config<T>(suffix: &str, defaults: &str, config_file: Option<&Path>) 
 where
     T: for<'a> Deserialize<'a>,
 {
-    let mut builder = Config::builder()
-        .add_source(File::from_str(
-            include_str!("../config.base.yaml"),
-            FileFormat::Yaml,
-        ))
-        .add_source(File::from_str(defaults, FileFormat::Yaml))
-        .add_source(default_file_source("/etc/firefly", suffix));
+    let mut config = Figment::new()
+        .merge(Yaml::string(include_str!("../config.base.yaml")))
+        .merge(Yaml::string(defaults))
+        .merge(default_config_source("/etc/firefly", suffix));
 
     if let Some(dir) = home::home_dir() {
         if let Some(firefly_dir) = dir.join(".firefly").to_str() {
-            builder = builder.add_source(default_file_source(firefly_dir, suffix));
+            config = config.merge(default_config_source(firefly_dir, suffix));
         }
     }
 
-    builder = builder.add_source(default_file_source(".", suffix));
+    if let Ok(cwd) = std::env::current_dir() {
+        if let Some(cwd_str) = cwd.to_str() {
+            config = config.merge(default_config_source(cwd_str, suffix));
+        }
+    }
 
     if let Some(file) = config_file {
-        let file: File<FileSourceFile, FileFormat> = file.into();
-        builder = builder.add_source(file);
+        config = config.merge(Yaml::file_exact(file));
     }
-    let config = builder
-        .add_source(Environment::with_prefix("firefly"))
-        .build()?;
-    Ok(config.try_deserialize()?)
+
+    config = config.merge(Env::prefixed("FIREFLY_"));
+    Ok(config.extract()?)
 }
 
-fn default_file_source(dir: &str, suffix: &str) -> File<FileSourceFile, FileFormat> {
+fn default_config_source(dir: &str, suffix: &str) -> Data<Yaml> {
     let name = format!("{dir}/firefly.{suffix}.yaml");
-    File::with_name(&name).required(false)
+    Yaml::file(name)
 }
