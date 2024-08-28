@@ -1,14 +1,22 @@
 use aide::{
     axum::{routing::get, ApiRouter, IntoApiResponse},
-    openapi::OpenApi,
+    openapi::{Info, OpenApi},
     NoApi,
 };
 use anyhow::Result;
 use axum::{response::Html, Extension, Json};
 use axum_swagger_ui::swagger_ui;
+use serde::Deserialize;
 use tokio::{net::TcpListener, signal};
 
-use crate::config::ApiConfig;
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ApiConfig {
+    pub address: String,
+    pub port: u16,
+    #[serde(default)]
+    pub info: Info,
+}
 
 async fn serve_api(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
     NoApi(Json(api))
@@ -22,7 +30,7 @@ pub async fn serve(config: &ApiConfig, router: ApiRouter) -> Result<()> {
     );
 
     let mut api = OpenApi {
-        info: config.info.clone().unwrap_or_default(),
+        info: config.info.clone(),
         ..OpenApi::default()
     };
     if api.info.version.is_empty() {
@@ -30,6 +38,8 @@ pub async fn serve(config: &ApiConfig, router: ApiRouter) -> Result<()> {
     }
 
     let listener = TcpListener::bind(format!("{}:{}", config.address, config.port)).await?;
+
+    println!("{} is now running on port {}", api.info.title, config.port);
 
     axum::serve(
         listener,

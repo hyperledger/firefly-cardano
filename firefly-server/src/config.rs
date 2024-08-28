@@ -1,20 +1,11 @@
 use std::path::Path;
 
-use aide::openapi::Info;
 use anyhow::Result;
 use figment::{
     providers::{Data, Env, Format, Yaml},
     Figment,
 };
 use serde::Deserialize;
-
-#[derive(Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub struct ApiConfig {
-    pub address: String,
-    pub port: u16,
-    pub info: Option<Info>,
-}
 
 pub fn load_config<T>(suffix: &str, defaults: &str, config_file: Option<&Path>) -> Result<T>
 where

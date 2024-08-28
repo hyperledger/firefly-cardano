@@ -1,7 +1,7 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use firefly_server::config::{self, ApiConfig};
+use firefly_server::{config, server::ApiConfig};
 use serde::Deserialize;
 
 #[derive(Deserialize)]

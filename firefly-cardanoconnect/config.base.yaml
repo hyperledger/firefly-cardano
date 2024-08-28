@@ -2,3 +2,5 @@ api:
   port: 5018
   info:
     title: Firefly Cardano Connector
+connector:
+  signerUrl: "http://127.0.0.1:8555"

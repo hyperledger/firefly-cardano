@@ -1,0 +1,30 @@
+use axum::{extract::State, Json};
+use firefly_server::error::ApiResult;
+use pallas_primitives::conway::Tx;
+use schemars::JsonSchema;
+use serde::{Deserialize, Serialize};
+
+use crate::AppState;
+
+#[derive(Deserialize, JsonSchema)]
+pub struct SubmitTransactionRequest {
+    /// The address of the key to sign the transaction with.
+    address: String,
+    /// The raw CBOR-encoded transaction to submit.
+    transaction: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+pub struct SubmitTransactionResponse {
+    /// The ID of the submitted transaction
+    txid: String,
+}
+
+pub async fn submit_transaction(
+    State(AppState { signer }): State<AppState>,
+    Json(req): Json<SubmitTransactionRequest>,
+) -> ApiResult<Json<SubmitTransactionResponse>> {
+    let mut transaction: Tx = minicbor::decode(&hex::decode(&req.transaction)?)?;
+    signer.sign(req.address, &mut transaction).await?;
+    todo!()
+}
