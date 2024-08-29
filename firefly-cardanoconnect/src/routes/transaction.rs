@@ -1,5 +1,6 @@
+use anyhow::Context;
 use axum::{extract::State, Json};
-use firefly_server::error::ApiResult;
+use firefly_server::error::{ApiResult, Context as _};
 use pallas_primitives::conway::Tx;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -21,10 +22,13 @@ pub struct SubmitTransactionResponse {
 }
 
 pub async fn submit_transaction(
-    State(AppState { signer }): State<AppState>,
+    State(AppState { blockchain, signer, .. }): State<AppState>,
     Json(req): Json<SubmitTransactionRequest>,
 ) -> ApiResult<Json<SubmitTransactionResponse>> {
     let mut transaction: Tx = minicbor::decode(&hex::decode(&req.transaction)?)?;
-    signer.sign(req.address, &mut transaction).await?;
-    todo!()
+    signer.sign(req.address, &mut transaction).await.context("could not sign transaction")?;
+    let txid = blockchain.submit(transaction).await.context("could not submit transaction")?;
+    Ok(Json(SubmitTransactionResponse {
+        txid,
+    }))
 }

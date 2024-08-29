@@ -5,11 +5,13 @@ use aide::axum::{
     ApiRouter,
 };
 use anyhow::Result;
+use blockchain::BlockchainClient;
 use clap::Parser;
 use config::load_config;
 use routes::{health::health, transaction::submit_transaction, ws::handle_socket_upgrade};
 use signer::CardanoSigner;
 
+mod blockchain;
 mod config;
 mod routes;
 mod signer;
@@ -23,6 +25,7 @@ struct Args {
 
 #[derive(Clone)]
 struct AppState {
+    pub blockchain: Arc<BlockchainClient>,
     pub signer: Arc<CardanoSigner>,
 }
 
@@ -34,6 +37,7 @@ async fn main() -> Result<()> {
     let config = load_config(config_file)?;
 
     let state = AppState {
+        blockchain: Arc::new(BlockchainClient::new(&config).await?),
         signer: Arc::new(CardanoSigner::new(&config)?),
     };
 

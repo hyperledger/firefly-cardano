@@ -4,6 +4,8 @@ use anyhow::Result;
 use firefly_server::{config, http::HttpClientConfig, server::ApiConfig};
 use serde::Deserialize;
 
+use crate::blockchain::BlockchainConfig;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CardanoConnectConfig {
@@ -17,6 +19,7 @@ pub struct CardanoConnectConfig {
 #[serde(rename_all = "camelCase")]
 pub struct ConnectorConfig {
     pub signer_url: String,
+    pub blockchain: BlockchainConfig,
 }
 
 pub fn load_config(config_file: Option<&Path>) -> Result<CardanoConnectConfig> {
