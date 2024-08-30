@@ -20,4 +20,3 @@ reqwest = { version = "0.12", default-features = false, features = ["json", "rus
 schemars = "0.8"
 serde = "1"
 tokio = { version = "1", features = ["full"] }
-utxorpc = { git = "https://github.com/SupernaviX/utxorpc-rust-sdk.git", rev = "214ef68" }

@@ -10,13 +10,11 @@ use pallas_network::{
 use pallas_primitives::conway::Tx;
 use serde::Deserialize;
 use tokio::sync::Mutex;
-use utxorpc::{CardanoSubmitClient, ClientBuilder, Stage};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainConfig {
-    pub utxorpc_address: Option<String>,
-    pub socket: Option<PathBuf>,
+    pub socket: PathBuf,
     pub network: Option<Network>,
     pub network_magic: Option<u64>,
     pub era: u16,
@@ -44,8 +42,7 @@ impl BlockchainConfig {
 }
 
 pub struct BlockchainClient {
-    n2c: Option<Mutex<NodeClient>>,
-    utxorpc: Option<Mutex<CardanoSubmitClient>>,
+    n2c: Mutex<NodeClient>,
     era: u16,
 }
 
@@ -53,47 +50,20 @@ impl BlockchainClient {
     pub async fn new(config: &CardanoConnectConfig) -> Result<Self> {
         let blockchain = &config.connector.blockchain;
 
-        let n2c = if let Some(socket) = &blockchain.socket {
-            let client = NodeClient::connect(&socket, blockchain.magic())
+        let n2c = {
+            let client = NodeClient::connect(&blockchain.socket, blockchain.magic())
                 .await
                 .context("could not connect to socket")?;
-            Some(Mutex::new(client))
-        } else {
-            None
+            Mutex::new(client)
         };
-
-        let utxorpc = if let Some(address) = &blockchain.utxorpc_address {
-            let client = ClientBuilder::new()
-                .uri(address)
-                .context("could not configure utxorpc")?
-                .build()
-                .await;
-            Some(Mutex::new(client))
-        } else {
-            None
-        };
-
-        if n2c.is_none() && utxorpc.is_none() {
-            bail!("Missing configuration in connector.blockchain");
-        }
 
         Ok(Self {
             n2c,
-            utxorpc,
             era: blockchain.era,
         })
     }
 
     pub async fn submit(&self, transaction: Tx) -> Result<String> {
-        if let Some(client) = self.n2c.as_ref() {
-            self.submit_n2c(client, transaction).await
-        } else {
-            self.submit_utxorpc(self.utxorpc.as_ref().unwrap(), transaction)
-                .await
-        }
-    }
-
-    async fn submit_n2c(&self, client: &Mutex<NodeClient>, transaction: Tx) -> Result<String> {
         let txid = {
             let txid_bytes = Hasher::<256>::hash_cbor(&transaction.transaction_body);
             hex::encode(txid_bytes)
@@ -104,7 +74,7 @@ impl BlockchainClient {
             EraTx(self.era, bytes)
         };
         let response = {
-            let mut client = client.lock().await;
+            let mut client = self.n2c.lock().await;
             client
                 .submission()
                 .submit_tx(era_tx)
@@ -117,44 +87,5 @@ impl BlockchainClient {
                 bail!("transaction was rejected: {}", hex::encode(&reason.0));
             }
         }
-    }
-
-    async fn submit_utxorpc(
-        &self,
-        client: &Mutex<CardanoSubmitClient>,
-        transaction: Tx,
-    ) -> Result<String> {
-        let tx_bytes = {
-            let mut bytes = vec![];
-            minicbor::encode(transaction, &mut bytes).expect("infallible");
-            bytes
-        };
-
-        let (txid, mut stream) = {
-            let mut submit = client.lock().await;
-            let txid = submit
-                .submit_tx(vec![tx_bytes])
-                .await
-                .context("could not submit transaction")?
-                .pop()
-                .expect("utxorpc response was missing id");
-            let stream = submit
-                .wait_for_tx(vec![txid.clone()])
-                .await
-                .context("could not await transaction status")?;
-            (txid, stream)
-        };
-
-        while let Some(event) = stream
-            .event()
-            .await
-            .context("could not read transaction event")?
-        {
-            if event.r#ref == txid && event.stage == Stage::Acknowledged {
-                return Ok(hex::encode(txid));
-            }
-        }
-
-        bail!("Transaction was submitted, but we lost track of its state")
     }
 }
