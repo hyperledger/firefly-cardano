@@ -105,12 +105,16 @@ impl BlockchainClient {
         };
         let response = {
             let mut client = client.lock().await;
-            client.submission().submit_tx(era_tx).await?
+            client
+                .submission()
+                .submit_tx(era_tx)
+                .await
+                .context("could not submit transaction")?
         };
         match response {
             Response::Accepted => Ok(txid),
             Response::Rejected(reason) => {
-                panic!("not sure of format {:?}", reason);
+                bail!("transaction was rejected: {}", hex::encode(&reason.0));
             }
         }
     }
@@ -130,14 +134,22 @@ impl BlockchainClient {
             let mut submit = client.lock().await;
             let txid = submit
                 .submit_tx(vec![tx_bytes])
-                .await?
+                .await
+                .context("could not submit transaction")?
                 .pop()
                 .expect("utxorpc response was missing id");
-            let stream = submit.wait_for_tx(vec![txid.clone()]).await?;
+            let stream = submit
+                .wait_for_tx(vec![txid.clone()])
+                .await
+                .context("could not await transaction status")?;
             (txid, stream)
         };
 
-        while let Some(event) = stream.event().await? {
+        while let Some(event) = stream
+            .event()
+            .await
+            .context("could not read transaction event")?
+        {
             if event.r#ref == txid && event.stage == Stage::Acknowledged {
                 return Ok(hex::encode(txid));
             }
