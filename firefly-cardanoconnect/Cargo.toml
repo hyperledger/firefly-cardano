@@ -10,7 +10,9 @@ anyhow = "1"
 axum = { version = "0.7", features = ["ws"] }
 clap = { version = "4", features = ["derive"] }
 pallas-codec = "0.30"
+pallas-crypto = "0.30"
 pallas-primitives = "0.30"
+pallas-network = "0.30"
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.20"

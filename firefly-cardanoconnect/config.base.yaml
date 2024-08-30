@@ -4,3 +4,5 @@ api:
     title: Firefly Cardano Connector
 connector:
   signerUrl: "http://127.0.0.1:8555"
+  blockchain:
+    era: 6 # conway

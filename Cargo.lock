@@ -586,6 +586,8 @@ dependencies = [
  "hex",
  "minicbor",
  "pallas-codec",
+ "pallas-crypto",
+ "pallas-network",
  "pallas-primitives",
  "reqwest",
  "schemars",
@@ -1069,6 +1071,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "itertools"
+version = "0.13.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "413ee7dfc52ee1a4949ceeb7dbc8a33f2d6c088194d9f922fb8318faf1f01186"
+dependencies = [
+ "either",
+]
+
+[[package]]
 name = "itoa"
 version = "1.0.11"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1237,6 +1248,24 @@ dependencies = [
  "rand_core",
  "serde",
  "thiserror",
+]
+
+[[package]]
+name = "pallas-network"
+version = "0.30.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "219f4ce6de0cfa8b5ed86dff8cc020be90b7f94e9bbca056b5649d015f15f904"
+dependencies = [
+ "byteorder",
+ "hex",
+ "itertools 0.13.0",
+ "pallas-codec",
+ "pallas-crypto",
+ "rand",
+ "socket2",
+ "thiserror",
+ "tokio",
+ "tracing",
 ]
 
 [[package]]
