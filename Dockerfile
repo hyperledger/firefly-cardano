@@ -1,5 +1,5 @@
 FROM lukemathwalker/cargo-chef:latest-rust-alpine AS base
-RUN apk add sccache
+RUN apk add curl sccache
 ENV RUSTC_WRAPPER=sccache SCCACHE_DIR=/sccache
 WORKDIR /app
 
