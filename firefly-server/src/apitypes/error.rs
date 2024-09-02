@@ -32,6 +32,9 @@ impl ApiError {
     pub fn conflict(message: impl Into<String>) -> Self {
         Self::new(StatusCode::CONFLICT, message)
     }
+    pub fn not_implemented(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::NOT_IMPLEMENTED, message)
+    }
 }
 
 #[derive(Serialize)]

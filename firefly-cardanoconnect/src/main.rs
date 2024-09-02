@@ -11,7 +11,10 @@ use config::load_config;
 use persistence::Persistence;
 use routes::{
     health::health,
-    streams::{create_stream, delete_stream, get_stream, list_streams, update_stream},
+    streams::{
+        create_listener, create_stream, delete_listener, delete_stream, get_listener, get_stream,
+        list_listeners, list_streams, update_stream,
+    },
     transaction::submit_transaction,
     ws::handle_socket_upgrade,
 };
@@ -62,6 +65,14 @@ async fn main() -> Result<()> {
         .api_route(
             "/api/eventstreams/:streamId",
             get(get_stream).patch(update_stream).delete(delete_stream),
+        )
+        .api_route(
+            "/api/eventstreams/:streamId/listeners",
+            post(create_listener).get(list_listeners),
+        )
+        .api_route(
+            "/api/eventstreams/:streamId/listeners/:listenerId",
+            get(get_listener).delete(delete_listener),
         )
         .route("/api/ws", axum::routing::get(handle_socket_upgrade))
         .with_state(state);

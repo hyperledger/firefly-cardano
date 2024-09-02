@@ -4,7 +4,7 @@ use firefly_server::apitypes::{ApiDuration, ApiResult, NoContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::streams::Stream;
+use crate::streams::{ListenerType, Stream};
 use crate::AppState;
 
 fn example_batch_size() -> usize {
@@ -65,6 +65,39 @@ pub struct Pagination {
     pub after: Option<String>,
 }
 
+#[derive(Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct CreateListenerRequest {
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_: ListenerType,
+}
+
+#[derive(Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct ListenerPathParameters {
+    pub stream_id: String,
+    pub listener_id: String,
+}
+
+#[derive(Serialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
+pub struct Listener {
+    pub id: String,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub type_: ListenerType,
+}
+impl From<crate::streams::Listener> for Listener {
+    fn from(value: crate::streams::Listener) -> Self {
+        Self {
+            id: value.id.into(),
+            name: value.name,
+            type_: value.listener_type,
+        }
+    }
+}
+
 pub async fn create_stream(
     State(AppState { stream_manager, .. }): State<AppState>,
     Json(req): Json<CreateStreamRequest>,
@@ -115,4 +148,60 @@ pub async fn update_stream(
         .update_stream(&id, batch_size, batch_timeout)
         .await?;
     Ok(Json(stream.into()))
+}
+
+pub async fn create_listener(
+    State(AppState { stream_manager, .. }): State<AppState>,
+    Path(StreamPathParameters { stream_id }): Path<StreamPathParameters>,
+    Json(req): Json<CreateListenerRequest>,
+) -> ApiResult<Json<Listener>> {
+    let stream_id = stream_id.into();
+    let listener = stream_manager
+        .create_listener(&stream_id, &req.name, req.type_)
+        .await?;
+    Ok(Json(listener.into()))
+}
+
+pub async fn get_listener(
+    State(AppState { stream_manager, .. }): State<AppState>,
+    Path(ListenerPathParameters {
+        stream_id,
+        listener_id,
+    }): Path<ListenerPathParameters>,
+) -> ApiResult<Json<Listener>> {
+    let stream_id = stream_id.into();
+    let listener_id = listener_id.into();
+    let listener = stream_manager
+        .get_listener(&stream_id, &listener_id)
+        .await?;
+    Ok(Json(listener.into()))
+}
+
+pub async fn delete_listener(
+    State(AppState { stream_manager, .. }): State<AppState>,
+    Path(ListenerPathParameters {
+        stream_id,
+        listener_id,
+    }): Path<ListenerPathParameters>,
+) -> ApiResult<NoContent> {
+    let stream_id = stream_id.into();
+    let listener_id = listener_id.into();
+    stream_manager
+        .delete_listener(&stream_id, &listener_id)
+        .await?;
+    Ok(NoContent)
+}
+
+pub async fn list_listeners(
+    State(AppState { stream_manager, .. }): State<AppState>,
+    Path(StreamPathParameters { stream_id }): Path<StreamPathParameters>,
+    Query(pagination): Query<Pagination>,
+) -> ApiResult<Json<Vec<Listener>>> {
+    let stream_id = stream_id.into();
+    let after = pagination.after.map(|id| id.into());
+    let limit = pagination.limit;
+    let listeners = stream_manager
+        .list_listeners(&stream_id, after, limit)
+        .await?;
+    Ok(Json(listeners.into_iter().map(|l| l.into()).collect()))
 }
