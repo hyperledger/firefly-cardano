@@ -1,7 +1,7 @@
 use crate::config::CardanoConnectConfig;
 use anyhow::{anyhow, Result};
 use firefly_server::{
-    error::{ApiResult, Context},
+    apitypes::{ApiResult, Context},
     http::HttpClient,
 };
 use minicbor::{Encode, Encoder};

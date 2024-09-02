@@ -1,6 +1,6 @@
 use anyhow::Context;
 use axum::{extract::State, Json};
-use firefly_server::error::{ApiResult, Context as _};
+use firefly_server::apitypes::{ApiResult, Context as _};
 use pallas_primitives::conway::Tx;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};

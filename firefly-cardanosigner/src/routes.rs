@@ -1,6 +1,6 @@
 use anyhow::Context;
 use axum::{extract::State, Json};
-use firefly_server::error::{ApiError, ApiResult};
+use firefly_server::apitypes::{ApiError, ApiResult};
 use pallas_crypto::{hash::Hasher, key::ed25519::PublicKey};
 use pallas_primitives::conway::{Tx, VKeyWitness, WitnessSet};
 use schemars::JsonSchema;

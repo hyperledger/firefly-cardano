@@ -5,7 +5,7 @@ use duration_str::deserialize_option_duration;
 use reqwest::{Client, IntoUrl};
 use serde::{Deserialize, Serialize};
 
-use crate::error::{ApiError, ApiResult};
+use crate::apitypes::{ApiError, ApiResult};
 
 #[derive(Default, Deserialize)]
 #[serde(rename_all = "camelCase")]

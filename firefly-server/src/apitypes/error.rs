@@ -2,10 +2,10 @@ use std::fmt::Display;
 
 use aide::OperationOutput;
 use axum::{
-    http::StatusCode,
     response::{IntoResponse, Response},
     Json,
 };
+use reqwest::StatusCode;
 use serde::Serialize;
 
 pub struct ApiError {
@@ -28,6 +28,9 @@ impl ApiError {
     }
     pub fn not_found(message: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_FOUND, message)
+    }
+    pub fn conflict(message: impl Into<String>) -> Self {
+        Self::new(StatusCode::CONFLICT, message)
     }
 }
 
