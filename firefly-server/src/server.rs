@@ -4,10 +4,10 @@ use aide::{
     NoApi,
 };
 use anyhow::Result;
-use axum::{response::Html, Extension, Json};
-use axum_swagger_ui::swagger_ui;
+use axum::{Extension, Json, Router};
 use serde::Deserialize;
 use tokio::{net::TcpListener, signal};
+use utoipa_swagger_ui::{Config, SwaggerUi};
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -24,10 +24,12 @@ async fn serve_api(Extension(api): Extension<OpenApi>) -> impl IntoApiResponse {
 
 pub async fn serve(config: &ApiConfig, router: ApiRouter) -> Result<()> {
     // add common routes
-    let app = router.route("/api/openapi.json", get(serve_api)).route(
-        "/api",
-        get(|| async { Html(swagger_ui("/api/openapi.json")) }),
-    );
+    let swagger_ui_router: Router = SwaggerUi::new("/api")
+        .config(Config::new(["/api/openapi.json"]))
+        .into();
+    let app = router
+        .route("/api/openapi.json", get(serve_api))
+        .merge(swagger_ui_router);
 
     let mut api = OpenApi {
         info: config.info.clone(),
