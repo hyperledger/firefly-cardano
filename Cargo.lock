@@ -546,6 +546,7 @@ dependencies = [
  "pallas-network",
  "pallas-primitives",
  "rand",
+ "rand_chacha",
  "reqwest",
  "schemars",
  "serde",

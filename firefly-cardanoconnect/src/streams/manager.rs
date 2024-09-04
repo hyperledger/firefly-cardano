@@ -39,7 +39,7 @@ impl StreamManager {
             batch_timeout,
         };
         self.persistence.write_stream(&stream).await?;
-        self.mux.handle_stream_write(&stream).await;
+        self.mux.handle_stream_write(&stream).await?;
         Ok(stream)
     }
 
@@ -74,7 +74,7 @@ impl StreamManager {
             stream.batch_timeout = timeout;
         }
         self.persistence.write_stream(&stream).await?;
-        self.mux.handle_stream_write(&stream).await;
+        self.mux.handle_stream_write(&stream).await?;
         Ok(stream)
     }
 
@@ -103,7 +103,7 @@ impl StreamManager {
             stream_id: stream_id.clone(),
         };
         self.persistence.write_listener(&listener).await?;
-        self.mux.handle_listener_write(&listener).await;
+        self.mux.handle_listener_write(&listener).await?;
         Ok(listener)
     }
 
@@ -140,7 +140,7 @@ impl StreamManager {
     ) -> ApiResult<()> {
         self.mux
             .handle_listener_delete(stream_id, listener_id)
-            .await;
+            .await?;
         self.persistence
             .delete_listener(stream_id, listener_id)
             .await?;

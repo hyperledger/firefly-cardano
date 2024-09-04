@@ -3,12 +3,13 @@ use dashmap::DashMap;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use tokio::sync::Mutex;
 
-use crate::streams::{Listener, ListenerId, Stream, StreamId};
+use crate::streams::{Listener, ListenerId, Stream, StreamCheckpoint, StreamId};
 
 #[derive(Default)]
 pub struct Persistence {
     all_streams: Mutex<Vec<Stream>>,
     all_listeners: DashMap<StreamId, Vec<Listener>>,
+    all_checkpoints: DashMap<StreamId, StreamCheckpoint>,
 }
 
 impl Persistence {
@@ -45,6 +46,7 @@ impl Persistence {
         streams.retain(|it| it.id != *id);
 
         self.all_listeners.remove(id);
+        self.all_checkpoints.remove(id);
 
         Ok(())
     }
@@ -121,5 +123,26 @@ impl Persistence {
             .cloned()
             .collect();
         Ok(listeners)
+    }
+
+    pub async fn write_checkpoint(&self, checkpoint: &StreamCheckpoint) -> ApiResult<()> {
+        // check stream existence by checking if we have a (possibly empty) list of listeners for it,
+        // because that's cheaper than locking the streams list
+        if !self.all_listeners.contains_key(&checkpoint.stream_id) {
+            return Err(ApiError::not_found("No stream found with that ID"));
+        }
+        self.all_checkpoints
+            .insert(checkpoint.stream_id.clone(), checkpoint.clone());
+        Ok(())
+    }
+
+    pub async fn read_checkpoint(
+        &self,
+        stream_id: &StreamId,
+    ) -> ApiResult<Option<StreamCheckpoint>> {
+        match self.all_checkpoints.get(stream_id) {
+            Some(checkpoint) => Ok(Some(checkpoint.clone())),
+            None => Ok(None),
+        }
     }
 }

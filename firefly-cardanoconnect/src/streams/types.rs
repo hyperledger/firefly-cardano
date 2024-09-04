@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{cmp::Ordering, collections::BTreeMap, time::Duration};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -33,6 +33,42 @@ pub struct Listener {
 pub enum ListenerType {
     Events,
     Blocks,
+}
+
+#[derive(Clone, Debug)]
+pub struct StreamCheckpoint {
+    pub stream_id: StreamId,
+    pub listeners: BTreeMap<ListenerId, BlockReference>,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub enum BlockReference {
+    Origin,
+    Point(u64, String),
+}
+impl PartialOrd for BlockReference {
+    fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
+        if self == other {
+            return Some(Ordering::Equal);
+        }
+        match (self, other) {
+            (Self::Origin, Self::Origin) => Some(Ordering::Equal),
+            (Self::Origin, _) => Some(Ordering::Less),
+            (_, Self::Origin) => Some(Ordering::Greater),
+            (
+                Self::Point(block_number_l, block_hash_l),
+                Self::Point(block_number_r, block_hash_r),
+            ) => {
+                if block_number_l != block_number_r {
+                    block_number_l.partial_cmp(block_number_r)
+                } else if block_hash_l != block_hash_r {
+                    None
+                } else {
+                    Some(Ordering::Equal)
+                }
+            }
+        }
+    }
 }
 
 #[derive(Clone, Debug)]
