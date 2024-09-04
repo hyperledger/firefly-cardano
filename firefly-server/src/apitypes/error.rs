@@ -8,6 +8,7 @@ use axum::{
 use reqwest::StatusCode;
 use serde::Serialize;
 
+#[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
     message: String,
@@ -34,6 +35,12 @@ impl ApiError {
     }
     pub fn not_implemented(message: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_IMPLEMENTED, message)
+    }
+}
+
+impl Display for ApiError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_fmt(format_args!("{}: {}", self.status, self.message))
     }
 }
 
@@ -80,5 +87,17 @@ impl<T> Context for ApiResult<T> {
         C: Display,
     {
         self.map_err(|err| ApiError::new(err.status, format!("{}: {}", context, err.message)))
+    }
+}
+
+pub trait ToAnyhow {
+    type Success;
+    fn to_anyhow(self) -> Result<Self::Success, anyhow::Error>;
+}
+
+impl<T> ToAnyhow for ApiResult<T> {
+    type Success = T;
+    fn to_anyhow(self) -> Result<Self::Success, anyhow::Error> {
+        self.map_err(|err| anyhow::anyhow!("{}", err.to_string()))
     }
 }

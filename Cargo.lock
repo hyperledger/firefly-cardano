@@ -545,9 +545,11 @@ dependencies = [
  "pallas-crypto",
  "pallas-network",
  "pallas-primitives",
+ "rand",
  "reqwest",
  "schemars",
  "serde",
+ "serde_json",
  "tokio",
  "ulid",
 ]

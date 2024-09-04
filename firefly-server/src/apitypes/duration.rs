@@ -39,7 +39,7 @@ impl JsonSchema for ApiDuration {
 
     fn json_schema(gen: &mut schemars::gen::SchemaGenerator) -> schemars::schema::Schema {
         let mut schema = gen.subschema_for::<String>().into_object();
-        schema.metadata().default = Some("30000ms".into());
+        schema.metadata().default = Some("500ms".into());
         schema.into()
     }
 }

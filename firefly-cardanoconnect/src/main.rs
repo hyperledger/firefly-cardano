@@ -55,7 +55,7 @@ async fn main() -> Result<()> {
     let state = AppState {
         blockchain: Arc::new(BlockchainClient::new(&config).await?),
         signer: Arc::new(CardanoSigner::new(&config)?),
-        stream_manager: Arc::new(StreamManager::new(persistence)),
+        stream_manager: Arc::new(StreamManager::new(persistence).await?),
     };
 
     let router = ApiRouter::new()

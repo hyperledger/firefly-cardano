@@ -1,19 +1,28 @@
 use std::{sync::Arc, time::Duration};
 
+use anyhow::Result;
 use firefly_server::apitypes::{ApiError, ApiResult};
+use tokio::sync::mpsc;
 use ulid::Ulid;
 
 use crate::persistence::Persistence;
 
-use super::{Listener, ListenerId, ListenerType, Stream, StreamId};
+use super::{
+    mux::{Batch, Multiplexer},
+    Listener, ListenerId, ListenerType, Stream, StreamId,
+};
 
 pub struct StreamManager {
     persistence: Arc<Persistence>,
+    mux: Multiplexer,
 }
 
 impl StreamManager {
-    pub fn new(persistence: Arc<Persistence>) -> Self {
-        Self { persistence }
+    pub async fn new(persistence: Arc<Persistence>) -> Result<Self> {
+        Ok(Self {
+            persistence: persistence.clone(),
+            mux: Multiplexer::new(persistence).await?,
+        })
     }
 
     pub async fn create_stream(
@@ -30,6 +39,7 @@ impl StreamManager {
             batch_timeout,
         };
         self.persistence.write_stream(&stream).await?;
+        self.mux.handle_stream_write(&stream).await;
         Ok(stream)
     }
 
@@ -64,10 +74,12 @@ impl StreamManager {
             stream.batch_timeout = timeout;
         }
         self.persistence.write_stream(&stream).await?;
+        self.mux.handle_stream_write(&stream).await;
         Ok(stream)
     }
 
     pub async fn delete_stream(&self, id: &StreamId) -> ApiResult<()> {
+        self.mux.handle_stream_delete(id).await;
         self.persistence.delete_stream(id).await?;
         Ok(())
     }
@@ -91,6 +103,7 @@ impl StreamManager {
             stream_id: stream_id.clone(),
         };
         self.persistence.write_listener(&listener).await?;
+        self.mux.handle_listener_write(&listener).await;
         Ok(listener)
     }
 
@@ -125,9 +138,16 @@ impl StreamManager {
         stream_id: &StreamId,
         listener_id: &ListenerId,
     ) -> ApiResult<()> {
+        self.mux
+            .handle_listener_delete(stream_id, listener_id)
+            .await;
         self.persistence
             .delete_listener(stream_id, listener_id)
             .await?;
         Ok(())
+    }
+
+    pub async fn subscribe(&self, topic: &str) -> Result<mpsc::Receiver<Batch>> {
+        self.mux.subscribe(topic).await
     }
 }
