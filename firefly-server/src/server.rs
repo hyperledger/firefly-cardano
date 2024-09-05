@@ -7,9 +7,11 @@ use anyhow::Result;
 use axum::{Extension, Json, Router};
 use serde::Deserialize;
 use tokio::{net::TcpListener, signal};
+use tower_http::trace::TraceLayer;
+use tracing::info;
 use utoipa_swagger_ui::{Config, SwaggerUi};
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ApiConfig {
     pub address: String,
@@ -41,12 +43,13 @@ pub async fn serve(config: &ApiConfig, router: ApiRouter) -> Result<()> {
 
     let listener = TcpListener::bind(format!("{}:{}", config.address, config.port)).await?;
 
-    println!("{} is now running on port {}", api.info.title, config.port);
+    info!("{} is now running on port {}", api.info.title, config.port);
 
     axum::serve(
         listener,
         app.finish_api(&mut api)
             .layer(Extension(api))
+            .layer(TraceLayer::new_for_http())
             .into_make_service(),
     )
     .with_graceful_shutdown(shutdown_signal())

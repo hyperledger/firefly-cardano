@@ -11,7 +11,7 @@ use pallas_primitives::conway::Tx;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainConfig {
     pub socket: PathBuf,
@@ -20,7 +20,7 @@ pub struct BlockchainConfig {
     pub era: u16,
 }
 
-#[derive(Clone, Copy, Deserialize)]
+#[derive(Debug, Clone, Copy, Deserialize)]
 #[serde(rename_all = "lowercase")]
 pub enum Network {
     Mainnet,

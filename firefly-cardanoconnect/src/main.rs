@@ -7,7 +7,8 @@ use aide::axum::{
 use anyhow::Result;
 use blockchain::BlockchainClient;
 use clap::Parser;
-use config::load_config;
+use config::{load_config, CardanoConnectConfig};
+use firefly_server::instrumentation;
 use persistence::Persistence;
 use routes::{
     health::health,
@@ -20,6 +21,7 @@ use routes::{
 };
 use signer::CardanoSigner;
 use streams::StreamManager;
+use tracing::instrument;
 
 mod blockchain;
 mod config;
@@ -43,6 +45,19 @@ struct AppState {
     pub stream_manager: Arc<StreamManager>,
 }
 
+#[instrument(err(Debug))]
+async fn init_state(config: &CardanoConnectConfig) -> Result<AppState> {
+    let persistence = Arc::new(Persistence::default());
+
+    let state = AppState {
+        blockchain: Arc::new(BlockchainClient::new(config).await?),
+        signer: Arc::new(CardanoSigner::new(config)?),
+        stream_manager: Arc::new(StreamManager::new(persistence).await?),
+    };
+
+    Ok(state)
+}
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -50,13 +65,9 @@ async fn main() -> Result<()> {
     let config_file = args.config_file.as_deref();
     let config = load_config(config_file)?;
 
-    let persistence = Arc::new(Persistence::default());
+    instrumentation::init(&config.log)?;
 
-    let state = AppState {
-        blockchain: Arc::new(BlockchainClient::new(&config).await?),
-        signer: Arc::new(CardanoSigner::new(&config)?),
-        stream_manager: Arc::new(StreamManager::new(persistence).await?),
-    };
+    let state = init_state(&config).await?;
 
     let router = ApiRouter::new()
         .api_route("/api/health", get(health))

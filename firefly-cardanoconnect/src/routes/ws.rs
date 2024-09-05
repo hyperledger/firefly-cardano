@@ -7,6 +7,7 @@ use axum::{
     response::Response,
 };
 use serde::{Deserialize, Serialize};
+use tracing::{error, instrument, warn};
 
 use crate::AppState;
 
@@ -59,7 +60,7 @@ async fn handle_socket(
                 if err.topic != topic {
                     bail!("client acked messages from the wrong topic");
                 }
-                eprintln!("client couldn't process batch: {}", err.message);
+                error!("client couldn't process batch: {}", err.message);
                 continue;
             }
             other => {
@@ -97,10 +98,11 @@ enum IncomingMessage {
     Error(ErrorMessage),
 }
 
+#[instrument(err(Debug), skip(socket))]
 async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>> {
     loop {
         let Some(message) = socket.recv().await else {
-            eprintln!("socket has been closed");
+            warn!("socket has been closed");
             return Ok(None);
         };
         let data = match message.context("could not read websocket message")? {
@@ -111,7 +113,7 @@ async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>>
                 let reason = frame
                     .map(|f| f.reason.into_owned())
                     .unwrap_or("socket was closed".into());
-                eprintln!("socket was closed: {}", reason);
+                warn!("socket was closed: {}", reason);
                 return Ok(None);
             }
             Message::Binary(bytes) => bytes,
@@ -146,7 +148,7 @@ pub async fn handle_socket_upgrade(
 ) -> Response {
     ws.on_upgrade(|socket| async move {
         if let Err(error) = handle_socket(app_state, socket).await {
-            eprintln!("socket error: {:?}", error);
+            error!("socket error: {:?}", error);
         }
     })
 }

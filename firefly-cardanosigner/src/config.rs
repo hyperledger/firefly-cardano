@@ -1,17 +1,18 @@
 use std::path::{Path, PathBuf};
 
 use anyhow::Result;
-use firefly_server::{config, server::ApiConfig};
+use firefly_server::{config, instrumentation::LogConfig, server::ApiConfig};
 use serde::Deserialize;
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FireflySignerConfig {
     pub api: ApiConfig,
     pub file_wallet: Option<FileWalletConfig>,
+    pub log: LogConfig,
 }
 
-#[derive(Deserialize)]
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FileWalletConfig {
     pub path: PathBuf,

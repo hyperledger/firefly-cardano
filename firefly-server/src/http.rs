@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::apitypes::{ApiError, ApiResult};
 
-#[derive(Default, Deserialize)]
+#[derive(Debug, Default, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct HttpClientConfig {
     #[serde(deserialize_with = "deserialize_option_duration")]

@@ -10,6 +10,7 @@ use tokio::{
     sync::{mpsc, oneshot, Notify, RwLock},
     time,
 };
+use tracing::warn;
 
 use crate::persistence::Persistence;
 
@@ -88,7 +89,7 @@ impl Multiplexer {
         listener_id: &ListenerId,
     ) -> Result<()> {
         let Some(dispatcher) = self.dispatchers.get(stream_id) else {
-            eprintln!("listener deleted for stream we haven't heard of");
+            warn!(%stream_id, %listener_id, "listener deleted for stream we haven't heard of");
             return Ok(());
         };
         dispatcher.remove_listener(listener_id).await
@@ -226,7 +227,7 @@ impl StreamDispatcherWorker {
             };
             let sink = batch_sink.as_ref().unwrap();
             if let Err(err) = sink.send(batch).await {
-                eprintln!("could not send batch: {err}");
+                warn!(%self.stream_id, self.batch_number, "could not send batch: {err}");
                 batch_sink = None;
             }
             match ack_rx.await {
@@ -242,7 +243,7 @@ impl StreamDispatcherWorker {
                     self.batch_number += 1;
                 }
                 Err(err) => {
-                    eprintln!("error dispatching messages to stream: {}", err);
+                    warn!(%self.stream_id, self.batch_number, "error dispatching messages to stream: {}", err);
                 }
             }
         }

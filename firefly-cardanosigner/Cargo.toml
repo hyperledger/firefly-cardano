@@ -19,4 +19,5 @@ rand = "0.8"
 schemars = "0.8"
 serde = "1"
 serde_json = "1"
+tracing = "0.1"
 tokio = { version = "1", features = ["full"] }
