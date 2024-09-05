@@ -1,4 +1,8 @@
-use std::{cmp::Ordering, collections::BTreeMap, time::Duration};
+use std::{
+    cmp::Ordering,
+    collections::BTreeMap,
+    time::{Duration, SystemTime},
+};
 
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
@@ -26,6 +30,7 @@ pub struct Listener {
     pub name: String,
     pub listener_type: ListenerType,
     pub stream_id: StreamId,
+    pub filters: Vec<ListenerFilter>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize, JsonSchema)]
@@ -35,16 +40,26 @@ pub enum ListenerType {
     Blocks,
 }
 
+#[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+pub enum ListenerFilter {
+    TransactionId(String),
+}
+
 #[derive(Clone, Debug)]
 pub struct StreamCheckpoint {
     pub stream_id: StreamId,
-    pub listeners: BTreeMap<ListenerId, BlockReference>,
+    pub listeners: BTreeMap<ListenerId, EventReference>,
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BlockReference {
     Origin,
     Point(u64, String),
+}
+impl Default for BlockReference {
+    fn default() -> Self {
+        Self::Origin
+    }
 }
 impl PartialOrd for BlockReference {
     fn partial_cmp(&self, other: &Self) -> Option<Ordering> {
@@ -71,16 +86,47 @@ impl PartialOrd for BlockReference {
     }
 }
 
+#[derive(Clone, Debug, Default, PartialEq, Eq)]
+pub struct EventReference {
+    pub block: BlockReference,
+    pub tx_index: Option<u64>,
+    pub log_index: Option<u64>,
+}
+
 #[derive(Clone, Debug)]
 pub struct BlockInfo {
     pub block_number: u64,
     pub block_hash: String,
+    #[allow(unused)]
     pub parent_hash: String,
     pub transaction_hashes: Vec<String>,
 }
 
 #[derive(Clone, Debug)]
-pub struct BlockEvent {
+pub struct EventId {
     pub listener_id: ListenerId,
-    pub block_info: BlockInfo,
+    pub block_hash: String,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    pub transaction_index: u64,
+    pub log_index: u64,
+    pub timestamp: Option<SystemTime>,
+}
+
+#[derive(Clone, Debug)]
+pub enum EventData {
+    TransactionAccepted,
+}
+
+#[derive(Clone, Debug)]
+pub struct Event {
+    pub id: EventId,
+    pub data: EventData,
+}
+impl Event {
+    pub fn signature(&self) -> String {
+        match self.data {
+            EventData::TransactionAccepted => "TransactionAccepted(string,string,string)".into(),
+        }
+    }
 }

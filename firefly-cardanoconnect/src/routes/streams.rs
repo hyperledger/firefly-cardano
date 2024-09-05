@@ -4,7 +4,7 @@ use firefly_server::apitypes::{ApiDuration, ApiResult, NoContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::streams::{ListenerType, Stream};
+use crate::streams::{ListenerFilter, ListenerType, Stream};
 use crate::AppState;
 
 fn example_batch_size() -> usize {
@@ -71,6 +71,8 @@ pub struct CreateListenerRequest {
     pub name: String,
     #[serde(rename = "type")]
     pub type_: ListenerType,
+    #[serde(default)]
+    pub filters: Vec<ListenerFilter>,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -157,7 +159,7 @@ pub async fn create_listener(
 ) -> ApiResult<Json<Listener>> {
     let stream_id = stream_id.into();
     let listener = stream_manager
-        .create_listener(&stream_id, &req.name, req.type_)
+        .create_listener(&stream_id, &req.name, req.type_, &req.filters)
         .await?;
     Ok(Json(listener.into()))
 }

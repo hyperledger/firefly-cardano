@@ -9,6 +9,7 @@ aide = { version = "0.13", features = ["axum"] }
 anyhow = "1"
 axum = { version = "0.7", features = ["ws"] }
 clap = { version = "4", features = ["derive"] }
+chrono = "0.4"
 dashmap = "6"
 pallas-codec = "0.30"
 pallas-crypto = "0.30"

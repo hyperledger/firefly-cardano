@@ -1,3 +1,5 @@
+use std::time::SystemTime;
+
 use anyhow::{bail, Context, Result};
 use axum::{
     extract::{
@@ -6,6 +8,7 @@ use axum::{
     },
     response::Response,
 };
+use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, instrument, warn};
 
@@ -31,12 +34,16 @@ async fn handle_socket(
             events: batch
                 .events
                 .iter()
-                .map(|e| BlockEvent {
-                    listener_id: e.listener_id.clone().into(),
-                    block_number: e.block_info.block_number,
-                    block_hash: e.block_info.block_hash.clone(),
-                    parent_hash: e.block_info.parent_hash.clone(),
-                    transaction_hashes: e.block_info.transaction_hashes.clone(),
+                .map(|e| Event {
+                    listener_id: Some(e.id.listener_id.clone().into()),
+                    signature: e.signature(),
+                    block_number: e.id.block_number,
+                    block_hash: e.id.block_hash.clone(),
+                    transaction_hash: e.id.transaction_hash.clone(),
+                    transaction_index: e.id.transaction_index,
+                    log_index: e.id.log_index,
+                    timestamp: e.id.timestamp.map(systemtime_to_rfc3339),
+                    data: serde_json::Value::Object(serde_json::Map::new()),
                 })
                 .collect(),
         };
@@ -69,6 +76,11 @@ async fn handle_socket(
         }
     }
     Ok(())
+}
+
+fn systemtime_to_rfc3339(value: SystemTime) -> String {
+    let date: DateTime<Utc> = value.into();
+    date.to_rfc3339()
 }
 
 #[derive(Debug, Deserialize)]
@@ -127,19 +139,23 @@ async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>>
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct BlockEvent {
-    listener_id: String,
-    block_number: u64,
+struct Event {
+    listener_id: Option<String>,
+    signature: String,
     block_hash: String,
-    parent_hash: String,
-    transaction_hashes: Vec<String>,
+    block_number: u64,
+    transaction_hash: String,
+    transaction_index: u64,
+    log_index: u64,
+    timestamp: Option<String>,
+    data: serde_json::Value,
 }
 
 #[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
 struct OutgoingBatch {
     batch_number: u64,
-    events: Vec<BlockEvent>,
+    events: Vec<Event>,
 }
 
 pub async fn handle_socket_upgrade(

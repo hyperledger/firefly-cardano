@@ -9,7 +9,7 @@ use crate::persistence::Persistence;
 
 use super::{
     mux::{Batch, Multiplexer},
-    Listener, ListenerId, ListenerType, Stream, StreamId,
+    Listener, ListenerFilter, ListenerId, ListenerType, Stream, StreamId,
 };
 
 pub struct StreamManager {
@@ -89,10 +89,11 @@ impl StreamManager {
         stream_id: &StreamId,
         name: &str,
         listener_type: ListenerType,
+        filters: &[ListenerFilter],
     ) -> ApiResult<Listener> {
-        if listener_type != ListenerType::Blocks {
+        if listener_type != ListenerType::Events {
             return Err(ApiError::not_implemented(
-                "Only block event listeners are supported",
+                "Only event listeners are supported",
             ));
         }
         let id = Ulid::new().to_string().into();
@@ -101,6 +102,7 @@ impl StreamManager {
             name: name.to_string(),
             listener_type,
             stream_id: stream_id.clone(),
+            filters: filters.to_vec(),
         };
         self.persistence.write_listener(&listener).await?;
         self.mux.handle_listener_write(&listener).await?;

@@ -1,4 +1,9 @@
-use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
+use std::{
+    cmp::Ordering,
+    collections::BTreeMap,
+    sync::Arc,
+    time::{Duration, SystemTime},
+};
 
 use anyhow::{bail, Context, Result};
 use dashmap::{DashMap, Entry};
@@ -12,10 +17,14 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::persistence::Persistence;
+use crate::{
+    persistence::Persistence,
+    streams::{EventData, EventId},
+};
 
 use super::{
-    BlockEvent, BlockInfo, BlockReference, Listener, ListenerId, Stream, StreamCheckpoint, StreamId,
+    BlockInfo, BlockReference, Event, EventReference, Listener, ListenerFilter, ListenerId, Stream,
+    StreamCheckpoint, StreamId,
 };
 
 #[derive(Clone)]
@@ -79,7 +88,7 @@ impl Multiplexer {
             bail!("new listener created for stream we haven't heard of");
         };
         dispatcher
-            .add_listener(listener, BlockReference::Origin)
+            .add_listener(listener, EventReference::default())
             .await
     }
 
@@ -116,20 +125,24 @@ impl StreamDispatcher {
         persistence: Arc<Persistence>,
         data_source: DataSource,
     ) -> Result<Self> {
-        let listeners = persistence
+        let all_listeners = persistence
             .list_listeners(&stream.id, None, None)
             .await
             .to_anyhow()?;
         let checkpoint = persistence.read_checkpoint(&stream.id).await.to_anyhow()?;
         let old_hwms = checkpoint.map(|cp| cp.listeners).unwrap_or_default();
 
-        let mut hwms = BTreeMap::new();
-        for listener in listeners {
-            let hwm = old_hwms
-                .get(&listener.id)
-                .cloned()
-                .unwrap_or(BlockReference::Origin);
-            hwms.insert(listener.id, hwm);
+        let mut listeners = BTreeMap::new();
+        for listener in all_listeners {
+            let hwm = old_hwms.get(&listener.id).cloned().unwrap_or_default();
+            listeners.insert(
+                listener.id.clone(),
+                ListenerState {
+                    id: listener.id,
+                    hwm,
+                    filters: listener.filters,
+                },
+            );
         }
 
         let worker = StreamDispatcherWorker {
@@ -137,7 +150,7 @@ impl StreamDispatcher {
             batch_size: stream.batch_size,
             batch_timeout: stream.batch_timeout,
             batch_number: 0,
-            hwms,
+            listeners,
             data_source,
             persistence,
         };
@@ -158,10 +171,11 @@ impl StreamDispatcher {
         Ok(())
     }
 
-    pub async fn add_listener(&self, listener: &Listener, hwm: BlockReference) -> Result<()> {
+    pub async fn add_listener(&self, listener: &Listener, hwm: EventReference) -> Result<()> {
         self.state_change_sink
             .send(StreamDispatcherStateChange::NewListener(
                 listener.id.clone(),
+                listener.filters.clone(),
                 hwm,
             ))
             .await
@@ -194,7 +208,7 @@ struct StreamDispatcherWorker {
     batch_size: usize,
     batch_timeout: Duration,
     batch_number: u64,
-    hwms: BTreeMap<ListenerId, BlockReference>,
+    listeners: BTreeMap<ListenerId, ListenerState>,
     data_source: DataSource,
     persistence: Arc<Persistence>,
 }
@@ -203,19 +217,23 @@ impl StreamDispatcherWorker {
     async fn run(mut self, mut state_change_source: mpsc::Receiver<StreamDispatcherStateChange>) {
         let mut batch_sink = None;
         loop {
-            let (batch, ack_rx, hwms) = select! {
-                batch = self.build_batch(), if batch_sink.is_some() && !self.hwms.is_empty() => batch,
+            let (batch, ack_rx, listeners) = select! {
+                batch = self.build_batch(), if batch_sink.is_some() && !self.listeners.is_empty() => batch,
                 Some(change) = state_change_source.recv() => {
                     match change {
                         StreamDispatcherStateChange::NewSettings(settings) => {
                             self.batch_size = settings.batch_size;
                             self.batch_timeout = settings.batch_timeout;
                         }
-                        StreamDispatcherStateChange::NewListener(listener_id, hwm) => {
-                            self.hwms.insert(listener_id, hwm);
+                        StreamDispatcherStateChange::NewListener(listener_id, filters, hwm) => {
+                            self.listeners.insert(listener_id.clone(), ListenerState {
+                                id: listener_id,
+                                hwm,
+                                filters,
+                            });
                         }
                         StreamDispatcherStateChange::RemovedListener(listener_id) => {
-                            self.hwms.remove(&listener_id);
+                            self.listeners.remove(&listener_id);
                         }
                         StreamDispatcherStateChange::NewBatchSink(sink) => {
                             batch_sink = Some(sink);
@@ -232,7 +250,11 @@ impl StreamDispatcherWorker {
             }
             match ack_rx.await {
                 Ok(()) => {
-                    self.hwms = hwms.clone();
+                    self.listeners = listeners;
+                    let mut hwms = BTreeMap::new();
+                    for (listener_id, listener) in self.listeners.iter() {
+                        hwms.insert(listener_id.clone(), listener.hwm.clone());
+                    }
                     self.persistence
                         .write_checkpoint(&StreamCheckpoint {
                             stream_id: self.stream_id.clone(),
@@ -254,28 +276,18 @@ impl StreamDispatcherWorker {
     ) -> (
         Batch,
         oneshot::Receiver<()>,
-        BTreeMap<ListenerId, BlockReference>,
+        BTreeMap<ListenerId, ListenerState>,
     ) {
-        let mut hwms = self.hwms.clone();
+        let mut listeners = self.listeners.clone();
+
         loop {
             let batch_timeout_at = time::sleep(self.batch_timeout);
             tokio::pin!(batch_timeout_at);
 
             let mut events = vec![];
-            loop {
-                select! {
-                    () = &mut batch_timeout_at => { break; }
-                    event = self.next_event(&hwms) => {
-                        hwms.insert(event.listener_id.clone(), BlockReference::Point(
-                            event.block_info.block_number,
-                            event.block_info.block_hash.clone(),
-                        ));
-                        events.push(event);
-                        if events.len() >= self.batch_size {
-                            break;
-                        }
-                    }
-                }
+            select! {
+                () = &mut batch_timeout_at => {}
+                () = self.collect_events(&mut listeners, &mut events) => {}
             }
 
             if events.is_empty() {
@@ -288,30 +300,102 @@ impl StreamDispatcherWorker {
                 events,
                 ack_tx,
             };
-            return (batch, ack_rx, hwms);
+            return (batch, ack_rx, listeners);
         }
     }
 
-    async fn next_event(&mut self, hwms: &BTreeMap<ListenerId, BlockReference>) -> BlockEvent {
-        assert!(!hwms.is_empty(), "no listeners to produce events!");
-        let (mut listener_id, mut min_hwm) = hwms.first_key_value().unwrap();
-        for (id, hwm) in hwms.iter().skip(1) {
-            if let Some(Ordering::Less) = hwm.partial_cmp(min_hwm) {
-                listener_id = id;
-                min_hwm = hwm;
+    async fn collect_events(
+        &mut self,
+        listeners: &mut BTreeMap<ListenerId, ListenerState>,
+        events: &mut Vec<Event>,
+    ) {
+        assert!(!listeners.is_empty(), "no listeners to produce events!");
+        let mut current_block = &listeners.first_key_value().unwrap().1.hwm.block;
+        for listener in listeners.values().skip(1) {
+            let block = &listener.hwm.block;
+            if let Some(Ordering::Less) = block.partial_cmp(current_block) {
+                current_block = block;
             }
         }
-        let block_info = self.data_source.next_block(min_hwm).await;
-        BlockEvent {
-            listener_id: listener_id.clone(),
-            block_info,
+
+        let mut block_info = self.data_source.find_block(current_block).await;
+        loop {
+            for listener in &mut listeners.values_mut() {
+                let listener_events = self.find_events(listener, &block_info);
+                for event in listener_events {
+                    listener.hwm = EventReference {
+                        block: BlockReference::Point(
+                            event.id.block_number,
+                            event.id.block_hash.clone(),
+                        ),
+                        tx_index: Some(event.id.transaction_index),
+                        log_index: Some(event.id.log_index),
+                    };
+                    events.push(event);
+                    if events.len() >= self.batch_size {
+                        return;
+                    }
+                }
+            }
+            // we've seen every event for this block, onto the next
+            let old_block_ref =
+                BlockReference::Point(block_info.block_number, block_info.block_hash.clone());
+            block_info = self.data_source.next_block(&old_block_ref).await;
+
+            // and update our high water mark while we're here
+            let new_block_ref =
+                BlockReference::Point(block_info.block_number, block_info.block_hash.clone());
+            for listener in &mut listeners.values_mut() {
+                listener.hwm = EventReference {
+                    block: new_block_ref.clone(),
+                    tx_index: None,
+                    log_index: None,
+                }
+            }
+        }
+    }
+
+    fn find_events(&self, listener: &ListenerState, block: &BlockInfo) -> Vec<Event> {
+        let mut events = vec![];
+        for (tx_idx, tx_hash) in block.transaction_hashes.iter().enumerate() {
+            for filter in &listener.filters {
+                if Self::matches_filter(tx_hash, filter) {
+                    let id = EventId {
+                        listener_id: listener.id.clone(),
+                        block_hash: block.block_hash.clone(),
+                        block_number: block.block_number,
+                        transaction_hash: tx_hash.clone(),
+                        transaction_index: tx_idx as u64,
+                        log_index: 0,
+                        timestamp: Some(SystemTime::now()),
+                    };
+                    events.push(Event {
+                        id,
+                        data: EventData::TransactionAccepted,
+                    })
+                }
+            }
+        }
+        events
+    }
+
+    fn matches_filter(tx: &str, filter: &ListenerFilter) -> bool {
+        match filter {
+            ListenerFilter::TransactionId(id) => id == tx || id == "any",
         }
     }
 }
 
+#[derive(Debug, Clone)]
+struct ListenerState {
+    id: ListenerId,
+    hwm: EventReference,
+    filters: Vec<ListenerFilter>,
+}
+
 enum StreamDispatcherStateChange {
     NewSettings(StreamDispatcherSettings),
-    NewListener(ListenerId, BlockReference),
+    NewListener(ListenerId, Vec<ListenerFilter>, EventReference),
     RemovedListener(ListenerId),
     NewBatchSink(mpsc::Sender<Batch>),
 }
@@ -323,7 +407,7 @@ struct StreamDispatcherSettings {
 
 pub struct Batch {
     pub batch_number: u64,
-    pub events: Vec<BlockEvent>,
+    pub events: Vec<Event>,
     ack_tx: oneshot::Sender<()>,
 }
 impl Batch {
@@ -355,11 +439,24 @@ impl DataSource {
     }
 
     // TODO: sometimes there are rollbacks
+    pub async fn find_block(&mut self, block: &BlockReference) -> BlockInfo {
+        let block_number = match block {
+            BlockReference::Origin => 0,
+            BlockReference::Point(block_number, _) => *block_number as usize,
+        };
+        self.find_block_by_number(block_number).await
+    }
+
+    // TODO: sometimes there are rollbacks
     pub async fn next_block(&mut self, last: &BlockReference) -> BlockInfo {
         let block_number = match last {
             BlockReference::Origin => 0,
-            BlockReference::Point(last_block_number, _) => *last_block_number as usize + 1,
-        };
+            BlockReference::Point(last_block_number, _) => *last_block_number as usize,
+        } + 1;
+        self.find_block_by_number(block_number).await
+    }
+
+    async fn find_block_by_number(&mut self, block_number: usize) -> BlockInfo {
         loop {
             {
                 let lock = self.chain.read().await;
