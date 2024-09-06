@@ -105,8 +105,15 @@ impl StreamManager {
             filters: filters.to_vec(),
         };
         self.persistence.write_listener(&listener).await?;
-        self.mux.handle_listener_write(&listener).await?;
-        Ok(listener)
+        match self.mux.handle_listener_write(&listener).await {
+            Ok(()) => Ok(listener),
+            Err(err) => {
+                self.persistence
+                    .delete_listener(stream_id, &listener.id)
+                    .await?;
+                Err(err.into())
+            }
+        }
     }
 
     pub async fn get_listener(

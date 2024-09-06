@@ -51,7 +51,7 @@ pub struct StreamCheckpoint {
     pub listeners: BTreeMap<ListenerId, EventReference>,
 }
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BlockReference {
     Origin,
     Point(u64, String),
@@ -89,6 +89,7 @@ impl PartialOrd for BlockReference {
 #[derive(Clone, Debug, Default, PartialEq, Eq)]
 pub struct EventReference {
     pub block: BlockReference,
+    pub rollback: bool,
     pub tx_index: Option<u64>,
     pub log_index: Option<u64>,
 }
@@ -97,9 +98,13 @@ pub struct EventReference {
 pub struct BlockInfo {
     pub block_number: u64,
     pub block_hash: String,
-    #[allow(unused)]
     pub parent_hash: String,
     pub transaction_hashes: Vec<String>,
+}
+impl BlockInfo {
+    pub fn as_reference(&self) -> BlockReference {
+        BlockReference::Point(self.block_number, self.block_hash.clone())
+    }
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +121,7 @@ pub struct EventId {
 #[derive(Clone, Debug)]
 pub enum EventData {
     TransactionAccepted,
+    TransactionRolledBack,
 }
 
 #[derive(Clone, Debug)]
@@ -127,6 +133,16 @@ impl Event {
     pub fn signature(&self) -> String {
         match self.data {
             EventData::TransactionAccepted => "TransactionAccepted(string,string,string)".into(),
+            EventData::TransactionRolledBack => {
+                "TransactionRolledBack(string,string,string)".into()
+            }
         }
+    }
+    pub fn into_rollback(self) -> Self {
+        let data = match self.data {
+            EventData::TransactionAccepted => EventData::TransactionRolledBack,
+            EventData::TransactionRolledBack => EventData::TransactionAccepted,
+        };
+        Self { id: self.id, data }
     }
 }

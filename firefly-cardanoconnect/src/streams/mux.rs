@@ -8,23 +8,21 @@ use std::{
 use anyhow::{bail, Context, Result};
 use dashmap::{DashMap, Entry};
 use firefly_server::apitypes::ToAnyhow;
-use rand::Rng;
-use rand_chacha::{rand_core::SeedableRng, ChaChaRng};
 use tokio::{
     select,
-    sync::{mpsc, oneshot, Notify, RwLock},
+    sync::{mpsc, oneshot},
     time,
 };
 use tracing::warn;
 
 use crate::{
     persistence::Persistence,
-    streams::{EventData, EventId},
+    streams::{blockchain::ListenerEvent, EventData, EventId},
 };
 
 use super::{
-    BlockInfo, BlockReference, Event, EventReference, Listener, ListenerFilter, ListenerId, Stream,
-    StreamCheckpoint, StreamId,
+    blockchain::DataSource, BlockInfo, BlockReference, Event, EventReference, Listener,
+    ListenerFilter, ListenerId, Stream, StreamCheckpoint, StreamId,
 };
 
 #[derive(Clone)]
@@ -32,12 +30,12 @@ pub struct Multiplexer {
     dispatchers: Arc<DashMap<StreamId, StreamDispatcher>>,
     stream_ids_by_topic: Arc<DashMap<String, StreamId>>,
     persistence: Arc<Persistence>,
-    data_source: DataSource,
+    data_source: Arc<DataSource>,
 }
 
 impl Multiplexer {
     pub async fn new(persistence: Arc<Persistence>) -> Result<Self> {
-        let data_source = DataSource::new();
+        let data_source = Arc::new(DataSource::new());
 
         let dispatchers = DashMap::new();
         let stream_ids_by_topic = DashMap::new();
@@ -84,6 +82,10 @@ impl Multiplexer {
     }
 
     pub async fn handle_listener_write(&self, listener: &Listener) -> Result<()> {
+        let hwm = EventReference::default(); // TODO: caller can provide this
+        self.data_source
+            .init_listener(listener.id.clone(), &hwm.block)
+            .await?;
         let Some(dispatcher) = self.dispatchers.get(&listener.stream_id) else {
             bail!("new listener created for stream we haven't heard of");
         };
@@ -123,7 +125,7 @@ impl StreamDispatcher {
     pub async fn new(
         stream: &Stream,
         persistence: Arc<Persistence>,
-        data_source: DataSource,
+        data_source: Arc<DataSource>,
     ) -> Result<Self> {
         let all_listeners = persistence
             .list_listeners(&stream.id, None, None)
@@ -209,7 +211,7 @@ struct StreamDispatcherWorker {
     batch_timeout: Duration,
     batch_number: u64,
     listeners: BTreeMap<ListenerId, ListenerState>,
-    data_source: DataSource,
+    data_source: Arc<DataSource>,
     persistence: Arc<Persistence>,
 }
 
@@ -310,54 +312,160 @@ impl StreamDispatcherWorker {
         events: &mut Vec<Event>,
     ) {
         assert!(!listeners.is_empty(), "no listeners to produce events!");
-        let mut current_block = &listeners.first_key_value().unwrap().1.hwm.block;
-        for listener in listeners.values().skip(1) {
-            let block = &listener.hwm.block;
-            if let Some(Ordering::Less) = block.partial_cmp(current_block) {
-                current_block = block;
-            }
-        }
-
-        let mut block_info = self.data_source.find_block(current_block).await;
         loop {
-            for listener in &mut listeners.values_mut() {
-                let listener_events = self.find_events(listener, &block_info);
-                for event in listener_events {
-                    listener.hwm = EventReference {
-                        block: BlockReference::Point(
-                            event.id.block_number,
-                            event.id.block_hash.clone(),
-                        ),
-                        tx_index: Some(event.id.transaction_index),
-                        log_index: Some(event.id.log_index),
-                    };
-                    events.push(event);
-                    if events.len() >= self.batch_size {
-                        return;
-                    }
+            let block_refs: Vec<_> = listeners
+                .values()
+                .map(|l| (l.id.clone(), l.hwm.block.clone()))
+                .collect();
+            let listener_event = self.data_source.current_event(&block_refs);
+            match &listener_event {
+                ListenerEvent::Process(block) => {
+                    self.collect_forward_events(listeners, events, block);
+                }
+                ListenerEvent::Rollback(block) => {
+                    self.collect_backward_events(listeners, events, block)
                 }
             }
-            // we've seen every event for this block, onto the next
-            let old_block_ref =
-                BlockReference::Point(block_info.block_number, block_info.block_hash.clone());
-            block_info = self.data_source.next_block(&old_block_ref).await;
-
-            // and update our high water mark while we're here
-            let new_block_ref =
-                BlockReference::Point(block_info.block_number, block_info.block_hash.clone());
-            for listener in &mut listeners.values_mut() {
-                listener.hwm = EventReference {
-                    block: new_block_ref.clone(),
-                    tx_index: None,
-                    log_index: None,
+            if events.len() >= self.batch_size {
+                break;
+            }
+            if let Some(ref_update) = self
+                .data_source
+                .update_refs(&block_refs, &listener_event)
+                .await
+            {
+                for listener in listeners.values_mut() {
+                    if listener.hwm.block == ref_update.from {
+                        listener.hwm = EventReference {
+                            block: ref_update.to.clone(),
+                            rollback: ref_update.rollback,
+                            tx_index: None,
+                            log_index: None,
+                        };
+                    }
                 }
             }
         }
     }
 
+    fn collect_forward_events(
+        &self,
+        listeners: &mut BTreeMap<ListenerId, ListenerState>,
+        events: &mut Vec<Event>,
+        block: &BlockInfo,
+    ) {
+        for listener in listeners.values_mut() {
+            if !Self::matches_ref(block, &listener.hwm.block) {
+                continue;
+            }
+            for event in self.find_forward_events(listener, block) {
+                listener.hwm = EventReference {
+                    block: listener.hwm.block.clone(),
+                    rollback: false,
+                    tx_index: Some(event.id.transaction_index),
+                    log_index: Some(event.id.log_index),
+                };
+                events.push(event);
+                if events.len() >= self.batch_size {
+                    return;
+                }
+            }
+        }
+    }
+
+    fn collect_backward_events(
+        &self,
+        listeners: &mut BTreeMap<ListenerId, ListenerState>,
+        events: &mut Vec<Event>,
+        block: &BlockInfo,
+    ) {
+        for listener in listeners.values_mut().rev() {
+            if !Self::matches_ref(block, &listener.hwm.block) {
+                continue;
+            }
+            for event in self.find_backward_events(listener, block) {
+                listener.hwm = EventReference {
+                    block: listener.hwm.block.clone(),
+                    rollback: true,
+                    tx_index: Some(event.id.transaction_index),
+                    log_index: Some(event.id.log_index),
+                };
+                events.push(event);
+                if events.len() >= self.batch_size {
+                    return;
+                }
+            }
+        }
+    }
+
+    fn matches_ref(block: &BlockInfo, block_ref: &BlockReference) -> bool {
+        match block_ref {
+            BlockReference::Origin => false,
+            BlockReference::Point(number, hash) => {
+                block.block_number == *number && block.block_hash == *hash
+            }
+        }
+    }
+
+    fn find_forward_events(&self, listener: &ListenerState, block: &BlockInfo) -> Vec<Event> {
+        if listener.hwm.rollback {
+            // If we were rolling back before, and now we've started rolling forward,
+            // we rolled back onto a block we've already completely processed.
+            return vec![];
+        }
+        let mut events = self.find_events(listener, block);
+        events.retain(|e| {
+            // throw out any events which came before our high-water mark
+            let hwm = &listener.hwm;
+            let tx_cmp = hwm
+                .tx_index
+                .as_ref()
+                .map(|tx| e.id.transaction_index.cmp(tx));
+            let log_cmp = hwm.log_index.as_ref().map(|log| e.id.log_index.cmp(log));
+            match (tx_cmp, log_cmp) {
+                (Some(Ordering::Less), _) => false,
+                (Some(Ordering::Equal), Some(Ordering::Less)) => false,
+                (_, _) => true,
+            }
+        });
+        events
+    }
+
+    fn find_backward_events(&self, listener: &ListenerState, block: &BlockInfo) -> Vec<Event> {
+        self.find_events(listener, block)
+            .into_iter()
+            .rev()
+            .filter(|e| {
+                let hwm = &listener.hwm;
+                let tx_cmp = hwm
+                    .tx_index
+                    .as_ref()
+                    .map(|tx| e.id.transaction_index.cmp(tx));
+                let log_cmp = hwm.log_index.as_ref().map(|log| e.id.log_index.cmp(log));
+                if hwm.rollback {
+                    // if we were rolling back already, throw out events we've already rolled back past
+                    match (tx_cmp, log_cmp) {
+                        (Some(Ordering::Greater), _) => false,
+                        (Some(Ordering::Equal), Some(Ordering::Greater)) => false,
+                        (_, _) => true,
+                    }
+                } else {
+                    // otherwise, just keep any events that rolling forward would have kept
+                    match (tx_cmp, log_cmp) {
+                        (Some(Ordering::Less), _) => true,
+                        (Some(Ordering::Equal), Some(Ordering::Less)) => true,
+                        (_, _) => false,
+                    }
+                }
+            })
+            .map(|e| e.into_rollback())
+            .collect()
+    }
+
     fn find_events(&self, listener: &ListenerState, block: &BlockInfo) -> Vec<Event> {
         let mut events = vec![];
         for (tx_idx, tx_hash) in block.transaction_hashes.iter().enumerate() {
+            let tx_idx = tx_idx as u64;
             for filter in &listener.filters {
                 if Self::matches_filter(tx_hash, filter) {
                     let id = EventId {
@@ -365,7 +473,7 @@ impl StreamDispatcherWorker {
                         block_hash: block.block_hash.clone(),
                         block_number: block.block_number,
                         transaction_hash: tx_hash.clone(),
-                        transaction_index: tx_idx as u64,
+                        transaction_index: tx_idx,
                         log_index: 0,
                         timestamp: Some(SystemTime::now()),
                     };
@@ -413,92 +521,5 @@ pub struct Batch {
 impl Batch {
     pub fn ack(self) {
         let _ = self.ack_tx.send(());
-    }
-}
-
-// Mock implementation of something which can query the chain
-#[derive(Clone)]
-struct DataSource {
-    // the real implementation of course won't be in memory
-    chain: Arc<RwLock<Vec<BlockInfo>>>,
-    new_block: Arc<Notify>,
-}
-
-impl Default for DataSource {
-    fn default() -> Self {
-        Self::new()
-    }
-}
-
-impl DataSource {
-    pub fn new() -> Self {
-        let chain = Arc::new(RwLock::new(vec![]));
-        let new_block = Arc::new(Notify::new());
-        tokio::spawn(Self::generate(chain.clone(), new_block.clone()));
-        Self { chain, new_block }
-    }
-
-    // TODO: sometimes there are rollbacks
-    pub async fn find_block(&mut self, block: &BlockReference) -> BlockInfo {
-        let block_number = match block {
-            BlockReference::Origin => 0,
-            BlockReference::Point(block_number, _) => *block_number as usize,
-        };
-        self.find_block_by_number(block_number).await
-    }
-
-    // TODO: sometimes there are rollbacks
-    pub async fn next_block(&mut self, last: &BlockReference) -> BlockInfo {
-        let block_number = match last {
-            BlockReference::Origin => 0,
-            BlockReference::Point(last_block_number, _) => *last_block_number as usize,
-        } + 1;
-        self.find_block_by_number(block_number).await
-    }
-
-    async fn find_block_by_number(&mut self, block_number: usize) -> BlockInfo {
-        loop {
-            {
-                let lock = self.chain.read().await;
-                if lock.len() > block_number {
-                    return lock[block_number].clone();
-                }
-            }
-            self.new_block.notified().await;
-        }
-    }
-
-    async fn generate(chain: Arc<RwLock<Vec<BlockInfo>>>, new_block: Arc<Notify>) {
-        let mut rng = ChaChaRng::from_seed([0; 32]);
-        loop {
-            time::sleep(Duration::from_secs(1)).await;
-            let mut lock = chain.write().await;
-            Self::generate_block(&mut rng, &mut lock);
-            new_block.notify_waiters();
-        }
-    }
-
-    fn generate_block(rng: &mut ChaChaRng, chain: &mut Vec<BlockInfo>) {
-        let (block_number, parent_hash) = match chain.last() {
-            Some(block) => (block.block_number + 1, block.block_hash.clone()),
-            None => (0, "".into()),
-        };
-
-        let mut transaction_hashes = vec![];
-        for _ in 0..rng.gen_range(0..10) {
-            transaction_hashes.push(Self::generate_hash(rng));
-        }
-        let block = BlockInfo {
-            block_number,
-            block_hash: Self::generate_hash(rng),
-            parent_hash,
-            transaction_hashes,
-        };
-        chain.push(block);
-    }
-
-    fn generate_hash(rng: &mut ChaChaRng) -> String {
-        let bytes: [u8; 32] = rng.gen();
-        hex::encode(bytes)
     }
 }

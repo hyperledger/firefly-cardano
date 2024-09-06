@@ -1,3 +1,4 @@
+mod blockchain;
 mod manager;
 mod mux;
 mod types;

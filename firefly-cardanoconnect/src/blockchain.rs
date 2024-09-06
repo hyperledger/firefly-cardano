@@ -11,6 +11,8 @@ use pallas_primitives::conway::Tx;
 use serde::Deserialize;
 use tokio::sync::Mutex;
 
+pub mod mocks;
+
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainConfig {
