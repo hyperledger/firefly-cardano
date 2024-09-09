@@ -85,8 +85,20 @@ impl PartialOrd for BlockReference {
         }
     }
 }
+impl BlockReference {
+    pub fn equivalent(&self, other: &Self) -> bool {
+        match (self, other) {
+            (BlockReference::Origin, BlockReference::Origin) => true,
+            (BlockReference::Point(number, _), BlockReference::Origin) => *number == 0,
+            (BlockReference::Origin, BlockReference::Point(number, _)) => *number == 0,
+            (BlockReference::Point(l_number, l_hash), BlockReference::Point(r_number, r_hash)) => {
+                l_number == r_number && l_hash == r_hash
+            }
+        }
+    }
+}
 
-#[derive(Clone, Debug, Default, PartialEq, Eq)]
+#[derive(Clone, Debug, Default)]
 pub struct EventReference {
     pub block: BlockReference,
     pub rollback: bool,

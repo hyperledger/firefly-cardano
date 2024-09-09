@@ -21,8 +21,9 @@ use crate::{
 };
 
 use super::{
-    blockchain::DataSource, BlockInfo, BlockReference, Event, EventReference, Listener,
-    ListenerFilter, ListenerId, Stream, StreamCheckpoint, StreamId,
+    blockchain::{ChainListener, DataSource},
+    BlockInfo, BlockReference, Event, EventReference, Listener, ListenerFilter, ListenerId, Stream,
+    StreamCheckpoint, StreamId,
 };
 
 #[derive(Clone)]
@@ -83,14 +84,16 @@ impl Multiplexer {
 
     pub async fn handle_listener_write(&self, listener: &Listener) -> Result<()> {
         let hwm = EventReference::default(); // TODO: caller can provide this
-        self.data_source
-            .init_listener(listener.id.clone(), &hwm.block)
+        let sync = self
+            .data_source
+            .listen(listener.id.clone(), &hwm.block)
             .await?;
+
         let Some(dispatcher) = self.dispatchers.get(&listener.stream_id) else {
             bail!("new listener created for stream we haven't heard of");
         };
         dispatcher
-            .add_listener(listener, EventReference::default())
+            .add_listener(listener, sync, EventReference::default())
             .await
     }
 
@@ -135,13 +138,17 @@ impl StreamDispatcher {
         let old_hwms = checkpoint.map(|cp| cp.listeners).unwrap_or_default();
 
         let mut listeners = BTreeMap::new();
+        let mut hwms = BTreeMap::new();
         for listener in all_listeners {
             let hwm = old_hwms.get(&listener.id).cloned().unwrap_or_default();
+            let stream = data_source.listen(listener.id.clone(), &hwm.block).await?;
+
+            hwms.insert(listener.id.clone(), hwm);
             listeners.insert(
                 listener.id.clone(),
                 ListenerState {
                     id: listener.id,
-                    hwm,
+                    sync: stream,
                     filters: listener.filters,
                 },
             );
@@ -153,7 +160,7 @@ impl StreamDispatcher {
             batch_timeout: stream.batch_timeout,
             batch_number: 0,
             listeners,
-            data_source,
+            hwms,
             persistence,
         };
         let (state_change_sink, state_change_source) = mpsc::channel(16);
@@ -173,11 +180,17 @@ impl StreamDispatcher {
         Ok(())
     }
 
-    pub async fn add_listener(&self, listener: &Listener, hwm: EventReference) -> Result<()> {
+    pub async fn add_listener(
+        &self,
+        listener: &Listener,
+        sync: ChainListener,
+        hwm: EventReference,
+    ) -> Result<()> {
         self.state_change_sink
             .send(StreamDispatcherStateChange::NewListener(
                 listener.id.clone(),
                 listener.filters.clone(),
+                sync,
                 hwm,
             ))
             .await
@@ -211,7 +224,7 @@ struct StreamDispatcherWorker {
     batch_timeout: Duration,
     batch_number: u64,
     listeners: BTreeMap<ListenerId, ListenerState>,
-    data_source: Arc<DataSource>,
+    hwms: BTreeMap<ListenerId, EventReference>,
     persistence: Arc<Persistence>,
 }
 
@@ -219,7 +232,7 @@ impl StreamDispatcherWorker {
     async fn run(mut self, mut state_change_source: mpsc::Receiver<StreamDispatcherStateChange>) {
         let mut batch_sink = None;
         loop {
-            let (batch, ack_rx, listeners) = select! {
+            let (batch, ack_rx, hwms) = select! {
                 batch = self.build_batch(), if batch_sink.is_some() && !self.listeners.is_empty() => batch,
                 Some(change) = state_change_source.recv() => {
                     match change {
@@ -227,15 +240,17 @@ impl StreamDispatcherWorker {
                             self.batch_size = settings.batch_size;
                             self.batch_timeout = settings.batch_timeout;
                         }
-                        StreamDispatcherStateChange::NewListener(listener_id, filters, hwm) => {
+                        StreamDispatcherStateChange::NewListener(listener_id, filters, sync, hwm) => {
                             self.listeners.insert(listener_id.clone(), ListenerState {
-                                id: listener_id,
-                                hwm,
+                                id: listener_id.clone(),
+                                sync,
                                 filters,
                             });
+                            self.hwms.insert(listener_id, hwm);
                         }
                         StreamDispatcherStateChange::RemovedListener(listener_id) => {
                             self.listeners.remove(&listener_id);
+                            self.hwms.remove(&listener_id);
                         }
                         StreamDispatcherStateChange::NewBatchSink(sink) => {
                             batch_sink = Some(sink);
@@ -252,15 +267,11 @@ impl StreamDispatcherWorker {
             }
             match ack_rx.await {
                 Ok(()) => {
-                    self.listeners = listeners;
-                    let mut hwms = BTreeMap::new();
-                    for (listener_id, listener) in self.listeners.iter() {
-                        hwms.insert(listener_id.clone(), listener.hwm.clone());
-                    }
+                    self.hwms = hwms;
                     self.persistence
                         .write_checkpoint(&StreamCheckpoint {
                             stream_id: self.stream_id.clone(),
-                            listeners: hwms,
+                            listeners: self.hwms.clone(),
                         })
                         .await
                         .expect("error persisting checkpoint");
@@ -278,9 +289,9 @@ impl StreamDispatcherWorker {
     ) -> (
         Batch,
         oneshot::Receiver<()>,
-        BTreeMap<ListenerId, ListenerState>,
+        BTreeMap<ListenerId, EventReference>,
     ) {
-        let mut listeners = self.listeners.clone();
+        let mut hwms = self.hwms.clone();
 
         loop {
             let batch_timeout_at = time::sleep(self.batch_timeout);
@@ -289,7 +300,7 @@ impl StreamDispatcherWorker {
             let mut events = vec![];
             select! {
                 () = &mut batch_timeout_at => {}
-                () = self.collect_events(&mut listeners, &mut events) => {}
+                () = self.collect_events(&mut hwms, &mut events) => {}
             }
 
             if events.is_empty() {
@@ -302,43 +313,65 @@ impl StreamDispatcherWorker {
                 events,
                 ack_tx,
             };
-            return (batch, ack_rx, listeners);
+            return (batch, ack_rx, hwms);
         }
     }
 
     async fn collect_events(
         &mut self,
-        listeners: &mut BTreeMap<ListenerId, ListenerState>,
+        hwms: &mut BTreeMap<ListenerId, EventReference>,
         events: &mut Vec<Event>,
     ) {
-        assert!(!listeners.is_empty(), "no listeners to produce events!");
+        assert!(
+            !self.listeners.is_empty(),
+            "no listeners to produce events!"
+        );
         loop {
-            let block_refs: Vec<_> = listeners
-                .values()
-                .map(|l| (l.id.clone(), l.hwm.block.clone()))
-                .collect();
-            let listener_event = self.data_source.current_event(&block_refs);
-            match &listener_event {
+            // find the next event to process
+            let mut sync_events = vec![];
+            for listener in self.listeners.values_mut() {
+                let hwm = hwms.get(&listener.id).unwrap();
+                let sync_event = listener.sync.get_event(&hwm.block);
+                sync_events.push((listener.id.clone(), sync_event));
+            }
+            let (listener_id, sync_event) = sync_events
+                .into_iter()
+                .max_by(|l, r| Self::compare_stream_event_priority(&l.1, &r.1))
+                .expect("no listeners to produce events!");
+
+            // process it, updating our high water marks as we go
+            match &sync_event {
                 ListenerEvent::Process(block) => {
-                    self.collect_forward_events(listeners, events, block);
+                    self.collect_forward_events(hwms, events, block);
                 }
                 ListenerEvent::Rollback(block) => {
-                    self.collect_backward_events(listeners, events, block)
+                    self.collect_backward_events(hwms, events, block);
                 }
             }
+
+            // if we still need to fill this batch, update our high water marks to look at the next block
             if events.len() >= self.batch_size {
                 break;
             }
-            if let Some(ref_update) = self
-                .data_source
-                .update_refs(&block_refs, &listener_event)
-                .await
-            {
-                for listener in listeners.values_mut() {
-                    if listener.hwm.block == ref_update.from {
-                        listener.hwm = EventReference {
-                            block: ref_update.to.clone(),
-                            rollback: ref_update.rollback,
+            let listener = self.listeners.get_mut(&listener_id).unwrap();
+            let (update_from, update_to, rollback) = match sync_event {
+                ListenerEvent::Process(block) => {
+                    let update_from = block.as_reference();
+                    let update_to = listener.sync.get_next(&update_from).await;
+                    (update_from, update_to, false)
+                }
+                ListenerEvent::Rollback(block) => {
+                    let update_from = block.as_reference();
+                    let update_to = Some(listener.sync.get_next_rollback(&update_from));
+                    (update_from, update_to, true)
+                }
+            };
+            if let Some(next_ref) = update_to {
+                for hwm in hwms.values_mut() {
+                    if hwm.block.equivalent(&update_from) {
+                        *hwm = EventReference {
+                            block: next_ref.clone(),
+                            rollback,
                             tx_index: None,
                             log_index: None,
                         };
@@ -350,17 +383,18 @@ impl StreamDispatcherWorker {
 
     fn collect_forward_events(
         &self,
-        listeners: &mut BTreeMap<ListenerId, ListenerState>,
+        hwms: &mut BTreeMap<ListenerId, EventReference>,
         events: &mut Vec<Event>,
         block: &BlockInfo,
     ) {
-        for listener in listeners.values_mut() {
-            if !Self::matches_ref(block, &listener.hwm.block) {
+        for (id, hwm) in hwms.iter_mut() {
+            if !Self::matches_ref(block, &hwm.block) {
                 continue;
             }
-            for event in self.find_forward_events(listener, block) {
-                listener.hwm = EventReference {
-                    block: listener.hwm.block.clone(),
+            let listener = self.listeners.get(id).unwrap();
+            for event in self.find_forward_events(listener, hwm, block) {
+                *hwm = EventReference {
+                    block: hwm.block.clone(),
                     rollback: false,
                     tx_index: Some(event.id.transaction_index),
                     log_index: Some(event.id.log_index),
@@ -375,17 +409,18 @@ impl StreamDispatcherWorker {
 
     fn collect_backward_events(
         &self,
-        listeners: &mut BTreeMap<ListenerId, ListenerState>,
+        hwms: &mut BTreeMap<ListenerId, EventReference>,
         events: &mut Vec<Event>,
         block: &BlockInfo,
     ) {
-        for listener in listeners.values_mut().rev() {
-            if !Self::matches_ref(block, &listener.hwm.block) {
+        for (id, hwm) in hwms.iter_mut().rev() {
+            if !Self::matches_ref(block, &hwm.block) {
                 continue;
             }
-            for event in self.find_backward_events(listener, block) {
-                listener.hwm = EventReference {
-                    block: listener.hwm.block.clone(),
+            let listener = self.listeners.get(id).unwrap();
+            for event in self.find_backward_events(listener, hwm, block) {
+                *hwm = EventReference {
+                    block: hwm.block.clone(),
                     rollback: true,
                     tx_index: Some(event.id.transaction_index),
                     log_index: Some(event.id.log_index),
@@ -400,15 +435,20 @@ impl StreamDispatcherWorker {
 
     fn matches_ref(block: &BlockInfo, block_ref: &BlockReference) -> bool {
         match block_ref {
-            BlockReference::Origin => false,
+            BlockReference::Origin => block.block_number == 0,
             BlockReference::Point(number, hash) => {
                 block.block_number == *number && block.block_hash == *hash
             }
         }
     }
 
-    fn find_forward_events(&self, listener: &ListenerState, block: &BlockInfo) -> Vec<Event> {
-        if listener.hwm.rollback {
+    fn find_forward_events(
+        &self,
+        listener: &ListenerState,
+        hwm: &EventReference,
+        block: &BlockInfo,
+    ) -> Vec<Event> {
+        if hwm.rollback {
             // If we were rolling back before, and now we've started rolling forward,
             // we rolled back onto a block we've already completely processed.
             return vec![];
@@ -416,7 +456,6 @@ impl StreamDispatcherWorker {
         let mut events = self.find_events(listener, block);
         events.retain(|e| {
             // throw out any events which came before our high-water mark
-            let hwm = &listener.hwm;
             let tx_cmp = hwm
                 .tx_index
                 .as_ref()
@@ -431,12 +470,16 @@ impl StreamDispatcherWorker {
         events
     }
 
-    fn find_backward_events(&self, listener: &ListenerState, block: &BlockInfo) -> Vec<Event> {
+    fn find_backward_events(
+        &self,
+        listener: &ListenerState,
+        hwm: &EventReference,
+        block: &BlockInfo,
+    ) -> Vec<Event> {
         self.find_events(listener, block)
             .into_iter()
             .rev()
             .filter(|e| {
-                let hwm = &listener.hwm;
                 let tx_cmp = hwm
                     .tx_index
                     .as_ref()
@@ -487,6 +530,22 @@ impl StreamDispatcherWorker {
         events
     }
 
+    // "rollback" events are higher priority than "process" events
+    // "process" events are higher priority the older they are
+    // "rollback" events are higher priority the newer they are
+    fn compare_stream_event_priority(lhs: &ListenerEvent, rhs: &ListenerEvent) -> Ordering {
+        match (lhs, rhs) {
+            (ListenerEvent::Process(_), ListenerEvent::Rollback(_)) => Ordering::Less,
+            (ListenerEvent::Rollback(_), ListenerEvent::Process(_)) => Ordering::Greater,
+            (ListenerEvent::Process(l), ListenerEvent::Process(r)) => {
+                r.block_number.cmp(&l.block_number)
+            }
+            (ListenerEvent::Rollback(l), ListenerEvent::Rollback(r)) => {
+                l.block_number.cmp(&r.block_number)
+            }
+        }
+    }
+
     fn matches_filter(tx: &str, filter: &ListenerFilter) -> bool {
         match filter {
             ListenerFilter::TransactionId(id) => id == tx || id == "any",
@@ -494,16 +553,21 @@ impl StreamDispatcherWorker {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 struct ListenerState {
     id: ListenerId,
-    hwm: EventReference,
+    sync: ChainListener,
     filters: Vec<ListenerFilter>,
 }
 
 enum StreamDispatcherStateChange {
     NewSettings(StreamDispatcherSettings),
-    NewListener(ListenerId, Vec<ListenerFilter>, EventReference),
+    NewListener(
+        ListenerId,
+        Vec<ListenerFilter>,
+        ChainListener,
+        EventReference,
+    ),
     RemovedListener(ListenerId),
     NewBatchSink(mpsc::Sender<Batch>),
 }
