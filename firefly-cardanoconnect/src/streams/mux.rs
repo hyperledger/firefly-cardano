@@ -82,19 +82,27 @@ impl Multiplexer {
         self.dispatchers.remove(id);
     }
 
-    pub async fn handle_listener_write(&self, listener: &Listener) -> Result<()> {
-        let hwm = EventReference::default(); // TODO: caller can provide this
+    pub async fn handle_listener_write(
+        &self,
+        listener: &Listener,
+        from_block: Option<BlockReference>,
+    ) -> Result<()> {
         let sync = self
             .data_source
-            .listen(listener.id.clone(), &hwm.block)
+            .listen(listener.id.clone(), from_block.as_ref())
             .await?;
+        let block = from_block.unwrap_or(sync.get_tip());
+        let hwm = EventReference {
+            block,
+            rollback: false,
+            tx_index: None,
+            log_index: None,
+        };
 
         let Some(dispatcher) = self.dispatchers.get(&listener.stream_id) else {
             bail!("new listener created for stream we haven't heard of");
         };
-        dispatcher
-            .add_listener(listener, sync, EventReference::default())
-            .await
+        dispatcher.add_listener(listener, sync, hwm).await
     }
 
     pub async fn handle_listener_delete(
@@ -141,7 +149,9 @@ impl StreamDispatcher {
         let mut hwms = BTreeMap::new();
         for listener in all_listeners {
             let hwm = old_hwms.get(&listener.id).cloned().unwrap_or_default();
-            let stream = data_source.listen(listener.id.clone(), &hwm.block).await?;
+            let stream = data_source
+                .listen(listener.id.clone(), Some(&hwm.block))
+                .await?;
 
             hwms.insert(listener.id.clone(), hwm);
             listeners.insert(

@@ -9,7 +9,7 @@ use crate::persistence::Persistence;
 
 use super::{
     mux::{Batch, Multiplexer},
-    Listener, ListenerFilter, ListenerId, ListenerType, Stream, StreamId,
+    BlockReference, Listener, ListenerFilter, ListenerId, ListenerType, Stream, StreamId,
 };
 
 pub struct StreamManager {
@@ -89,6 +89,7 @@ impl StreamManager {
         stream_id: &StreamId,
         name: &str,
         listener_type: ListenerType,
+        from_block: Option<BlockReference>,
         filters: &[ListenerFilter],
     ) -> ApiResult<Listener> {
         if listener_type != ListenerType::Events {
@@ -105,7 +106,7 @@ impl StreamManager {
             filters: filters.to_vec(),
         };
         self.persistence.write_listener(&listener).await?;
-        match self.mux.handle_listener_write(&listener).await {
+        match self.mux.handle_listener_write(&listener, from_block).await {
             Ok(()) => Ok(listener),
             Err(err) => {
                 self.persistence

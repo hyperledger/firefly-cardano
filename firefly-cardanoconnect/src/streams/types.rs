@@ -41,6 +41,7 @@ pub enum ListenerType {
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize, JsonSchema)]
+#[serde(rename_all = "camelCase")]
 pub enum ListenerFilter {
     TransactionId(String),
 }

@@ -54,7 +54,7 @@ impl MockChainSync {
     pub async fn find_intersect(
         &mut self,
         points: &[BlockReference],
-    ) -> (Option<BlockInfo>, BlockReference) {
+    ) -> (Option<BlockReference>, BlockReference) {
         let chain = self.chain.read_lock().await;
         let intersect = points.iter().find_map(|point| match point {
             BlockReference::Origin => chain.first(),
@@ -64,7 +64,7 @@ impl MockChainSync {
         });
         self.consumer_tip = intersect.map(|b| b.as_reference()).unwrap_or_default();
         let tip = chain.last().map(|b| b.as_reference()).unwrap_or_default();
-        (intersect.cloned(), tip)
+        (intersect.map(|i| i.as_reference()), tip)
     }
 }
 

@@ -1,10 +1,10 @@
 use axum::extract::{Path, Query};
 use axum::{extract::State, Json};
-use firefly_server::apitypes::{ApiDuration, ApiResult, NoContent};
+use firefly_server::apitypes::{ApiDuration, ApiError, ApiResult, NoContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::streams::{ListenerFilter, ListenerType, Stream};
+use crate::streams::{BlockReference, ListenerFilter, ListenerType, Stream};
 use crate::AppState;
 
 fn example_batch_size() -> usize {
@@ -13,6 +13,10 @@ fn example_batch_size() -> usize {
 
 fn example_opt_batch_size() -> Option<usize> {
     Some(example_batch_size())
+}
+
+fn example_from_block() -> Option<String> {
+    Some("earliest".into())
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -71,6 +75,8 @@ pub struct CreateListenerRequest {
     pub name: String,
     #[serde(rename = "type")]
     pub type_: ListenerType,
+    #[schemars(example = "example_from_block")]
+    pub from_block: Option<String>,
     #[serde(default)]
     pub filters: Vec<ListenerFilter>,
 }
@@ -158,8 +164,12 @@ pub async fn create_listener(
     Json(req): Json<CreateListenerRequest>,
 ) -> ApiResult<Json<Listener>> {
     let stream_id = stream_id.into();
+    let from_block = match req.from_block {
+        Some(block) => parse_block_reference(&block)?,
+        None => None,
+    };
     let listener = stream_manager
-        .create_listener(&stream_id, &req.name, req.type_, &req.filters)
+        .create_listener(&stream_id, &req.name, req.type_, from_block, &req.filters)
         .await?;
     Ok(Json(listener.into()))
 }
@@ -206,4 +216,23 @@ pub async fn list_listeners(
         .list_listeners(&stream_id, after, limit)
         .await?;
     Ok(Json(listeners.into_iter().map(|l| l.into()).collect()))
+}
+
+fn parse_block_reference(value: &str) -> ApiResult<Option<BlockReference>> {
+    match value {
+        "earliest" => Ok(Some(BlockReference::Origin)),
+        "latest" => Ok(None),
+        other => {
+            let Some((slot_number, slot_hash)) = other.split_once(".") else {
+                return Err(ApiError::bad_request("invalid block reference"));
+            };
+            let Ok(slot_number) = slot_number.parse() else {
+                return Err(ApiError::bad_request("invalid block reference"));
+            };
+            Ok(Some(BlockReference::Point(
+                slot_number,
+                slot_hash.to_string(),
+            )))
+        }
+    }
 }

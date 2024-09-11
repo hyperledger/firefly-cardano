@@ -38,7 +38,11 @@ impl DataSource {
         }
     }
 
-    pub async fn listen(&self, id: ListenerId, from: &BlockReference) -> Result<ChainListener> {
+    pub async fn listen(
+        &self,
+        id: ListenerId,
+        from: Option<&BlockReference>,
+    ) -> Result<ChainListener> {
         ChainListener::init(id, &self.chain, &self.db, from).await
     }
 }
@@ -56,13 +60,17 @@ impl ChainListener {
         id: ListenerId,
         chain: &MockChain,
         db: &Arc<BlockDatabase>,
-        from: &BlockReference,
+        from: Option<&BlockReference>,
     ) -> Result<Self> {
         if let Some(records) = db.load_history(&id).await {
             Self::init_existing(id, chain, db, records).await
         } else {
             Self::init_new(id, chain, db, from).await
         }
+    }
+
+    pub fn get_tip(&self) -> BlockReference {
+        self.history.front().unwrap().as_reference()
     }
 
     pub fn get_event(&mut self, block_ref: &BlockReference) -> ListenerEvent {
@@ -230,10 +238,13 @@ impl ChainListener {
 
         let mut sync = chain.sync();
         let points: Vec<_> = history.iter().rev().map(|b| b.as_reference()).collect();
-        let (head, _) = sync.find_intersect(&points).await;
-        let Some(head) = head else {
+        let (head_ref, _) = sync.find_intersect(&points).await;
+        let Some(head_ref) = head_ref else {
             // The chain didn't recognize any of the blocks we saved from this chain.
             // We have no way to recover.
+            bail!("listener {id} is on a fork which no longer exists");
+        };
+        let Some(head) = chain.request_block(&head_ref).await else {
             bail!("listener {id} is on a fork which no longer exists");
         };
 
@@ -262,11 +273,31 @@ impl ChainListener {
         id: ListenerId,
         chain: &MockChain,
         db: &Arc<BlockDatabase>,
-        from: &BlockReference,
+        from: Option<&BlockReference>,
     ) -> Result<Self> {
         let mut sync = chain.sync();
-        let (head, _) = sync.find_intersect(&[from.clone()]).await;
-        let Some(head) = head else {
+        let head_ref = match from {
+            Some(block_ref) => {
+                // If the caller passed a block reference, they're starting from either the origin or a specific point
+                let (head, _) = sync.find_intersect(&[block_ref.clone()]).await;
+                let Some(head) = head else {
+                    // Trying to init a fresh listener from a ref which does not exist
+                    bail!("could not start listening from {from:?}, as it does not exist on-chain");
+                };
+                head
+            }
+            None => {
+                // Otherwise, they just want to follow from the tip
+                let (_, tip) = sync.find_intersect(&[]).await;
+                // Call find_intersect again so the chainsync protocol knows we're following from the tip
+                let (head, _) = sync.find_intersect(&[tip.clone()]).await;
+                if !head.is_some_and(|h| h == tip) {
+                    bail!("could not start listening from latest: rollback occurred while we were connecting");
+                };
+                tip
+            }
+        };
+        let Some(head) = chain.request_block(&head_ref).await else {
             // Trying to init a fresh listener from a ref which does not exist
             bail!("could not start listening from {from:?}, as it does not exist on-chain");
         };
