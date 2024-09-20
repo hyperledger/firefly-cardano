@@ -9,7 +9,7 @@ aide = { version = "0.13", features = ["axum"] }
 anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.7", features = ["ws"] }
-blockfrost = "1"
+blockfrost = { git = "https://github.com/SupernaviX/blockfrost-rust.git", rev = "b86ce16", default-features = false, features = ["rustls-tls"] }
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 dashmap = "6"
