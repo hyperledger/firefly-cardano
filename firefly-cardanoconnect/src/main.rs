@@ -11,6 +11,7 @@ use config::{load_config, CardanoConnectConfig};
 use firefly_server::instrumentation;
 use persistence::Persistence;
 use routes::{
+    chain::get_chain_tip,
     health::health,
     streams::{
         create_listener, create_stream, delete_listener, delete_stream, get_listener, get_stream,
@@ -86,6 +87,7 @@ async fn main() -> Result<()> {
             "/api/eventstreams/:streamId/listeners/:listenerId",
             get(get_listener).delete(delete_listener),
         )
+        .api_route("/api/chain/tip", get(get_chain_tip))
         .route("/api/ws", axum::routing::get(handle_socket_upgrade))
         .with_state(state);
 
