@@ -6,8 +6,9 @@ use std::{
 use anyhow::{bail, Result};
 use dashmap::DashMap;
 use tokio::sync::mpsc;
+use tracing::warn;
 
-use crate::blockchain::mocks::{MockChain, MockChainSync, RequestNextResponse};
+use crate::blockchain::{BlockchainClient, ChainSyncClient, RequestNextResponse};
 
 use super::{BlockInfo, BlockReference, ListenerId};
 
@@ -18,22 +19,16 @@ pub enum ListenerEvent {
 }
 
 pub struct DataSource {
-    chain: Arc<MockChain>,
+    blockchain: Arc<BlockchainClient>,
     db: Arc<BlockDatabase>,
-}
-
-impl Default for DataSource {
-    fn default() -> Self {
-        Self::new()
-    }
 }
 
 const APPROXIMATELY_IMMUTABLE_LENGTH: usize = 20;
 
 impl DataSource {
-    pub fn new() -> Self {
+    pub fn new(blockchain: Arc<BlockchainClient>) -> Self {
         Self {
-            chain: Arc::new(MockChain::new(3000)),
+            blockchain,
             db: Arc::new(BlockDatabase::default()),
         }
     }
@@ -43,7 +38,7 @@ impl DataSource {
         id: ListenerId,
         from: Option<&BlockReference>,
     ) -> Result<ChainListener> {
-        ChainListener::init(id, &self.chain, &self.db, from).await
+        ChainListener::init(id, &self.blockchain, &self.db, from).await
     }
 }
 
@@ -58,7 +53,7 @@ pub struct ChainListener {
 impl ChainListener {
     async fn init(
         id: ListenerId,
-        chain: &MockChain,
+        chain: &BlockchainClient,
         db: &Arc<BlockDatabase>,
         from: Option<&BlockReference>,
     ) -> Result<Self> {
@@ -220,7 +215,7 @@ impl ChainListener {
 
     async fn init_existing(
         id: ListenerId,
-        chain: &MockChain,
+        chain: &BlockchainClient,
         db: &Arc<BlockDatabase>,
         records: Vec<BlockRecord>,
     ) -> Result<Self> {
@@ -236,15 +231,15 @@ impl ChainListener {
         history.sort_by_key(|b| b.block_number);
         let mut history: VecDeque<BlockInfo> = history.into();
 
-        let mut sync = chain.sync();
+        let mut sync = chain.sync().await?;
         let points: Vec<_> = history.iter().rev().map(|b| b.as_reference()).collect();
-        let (head_ref, _) = sync.find_intersect(&points).await;
+        let (head_ref, _) = sync.find_intersect(&points).await?;
         let Some(head_ref) = head_ref else {
             // The chain didn't recognize any of the blocks we saved from this chain.
             // We have no way to recover.
             bail!("listener {id} is on a fork which no longer exists");
         };
-        let Some(head) = chain.request_block(&head_ref).await else {
+        let Some(head) = sync.request_block(&head_ref).await? else {
             bail!("listener {id} is on a fork which no longer exists");
         };
 
@@ -271,15 +266,15 @@ impl ChainListener {
 
     async fn init_new(
         id: ListenerId,
-        chain: &MockChain,
+        chain: &BlockchainClient,
         db: &Arc<BlockDatabase>,
         from: Option<&BlockReference>,
     ) -> Result<Self> {
-        let mut sync = chain.sync();
+        let mut sync = chain.sync().await?;
         let head_ref = match from {
             Some(block_ref) => {
                 // If the caller passed a block reference, they're starting from either the origin or a specific point
-                let (head, _) = sync.find_intersect(&[block_ref.clone()]).await;
+                let (head, _) = sync.find_intersect(&[block_ref.clone()]).await?;
                 let Some(head) = head else {
                     // Trying to init a fresh listener from a ref which does not exist
                     bail!("could not start listening from {from:?}, as it does not exist on-chain");
@@ -288,16 +283,16 @@ impl ChainListener {
             }
             None => {
                 // Otherwise, they just want to follow from the tip
-                let (_, tip) = sync.find_intersect(&[]).await;
+                let (_, tip) = sync.find_intersect(&[]).await?;
                 // Call find_intersect again so the chainsync protocol knows we're following from the tip
-                let (head, _) = sync.find_intersect(&[tip.clone()]).await;
+                let (head, _) = sync.find_intersect(&[tip.clone()]).await?;
                 if !head.is_some_and(|h| h == tip) {
                     bail!("could not start listening from latest: rollback occurred while we were connecting");
                 };
                 tip
             }
         };
-        let Some(head) = chain.request_block(&head_ref).await else {
+        let Some(head) = sync.request_block(&head_ref).await? else {
             // Trying to init a fresh listener from a ref which does not exist
             bail!("could not start listening from {from:?}, as it does not exist on-chain");
         };
@@ -312,9 +307,15 @@ impl ChainListener {
                 break;
             }
             let prev_ref = BlockReference::Point(oldest_number - 1, prev_hash);
-            let Some(prev_block) = chain.request_block(&prev_ref).await else {
-                // The chain rolled back while we were building up history
-                bail!("block {from:?} was rolled back before we could finish setting it up");
+            let prev_block = match sync.request_block(&prev_ref).await {
+                Err(err) => {
+                    warn!("could not populate a history for this listener, it may not be able to recover from rollback: {}", err);
+                    break;
+                }
+                Ok(None) => {
+                    bail!("block {from:?} was rolled back before we could finish setting it up")
+                }
+                Ok(Some(prev_block)) => prev_block,
             };
 
             oldest_number = prev_block.block_number;
@@ -334,9 +335,19 @@ impl ChainListener {
         })
     }
 
-    async fn stay_in_sync(mut sync: MockChainSync, sync_event_sink: mpsc::Sender<ChainSyncEvent>) {
+    async fn stay_in_sync(
+        mut sync: impl ChainSyncClient,
+        sync_event_sink: mpsc::Sender<ChainSyncEvent>,
+    ) {
         loop {
-            let next_event = match sync.request_next().await {
+            let next_response = match sync.request_next().await {
+                Ok(response) => response,
+                Err(error) => {
+                    warn!("Error syncing with chain: {:#}", error);
+                    break;
+                }
+            };
+            let next_event = match next_response {
                 RequestNextResponse::RollForward(tip, _) => ChainSyncEvent::RollForward(tip),
                 RequestNextResponse::RollBackward(rollback_to, _) => {
                     ChainSyncEvent::RollBackward(rollback_to)

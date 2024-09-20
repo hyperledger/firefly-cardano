@@ -1,5 +1,7 @@
 use std::{sync::Arc, time::Duration};
 
+use anyhow::Result;
+use async_trait::async_trait;
 use dashmap::DashMap;
 use rand::{Rng as _, SeedableRng as _};
 use rand_chacha::ChaChaRng;
@@ -10,18 +12,16 @@ use tokio::{
 
 use crate::streams::{BlockInfo, BlockReference};
 
-pub enum RequestNextResponse {
-    RollForward(BlockInfo, #[expect(dead_code)] BlockReference),
-    RollBackward(BlockReference, #[expect(dead_code)] BlockReference),
-}
+use super::{ChainSyncClient, RequestNextResponse};
 
 pub struct MockChainSync {
     chain: MockChain,
     consumer_tip: BlockReference,
 }
 
-impl MockChainSync {
-    pub async fn request_next(&mut self) -> RequestNextResponse {
+#[async_trait]
+impl ChainSyncClient for MockChainSync {
+    async fn request_next(&mut self) -> Result<RequestNextResponse> {
         loop {
             let chain = self.chain.read_lock().await;
             let tip = chain.last().map(|b| b.as_reference()).unwrap_or_default();
@@ -29,7 +29,7 @@ impl MockChainSync {
             // If they need ro roll back, let em know
             if let Some(rollback_to) = self.chain.find_rollback(&self.consumer_tip) {
                 self.consumer_tip = rollback_to.clone();
-                return RequestNextResponse::RollBackward(rollback_to, tip);
+                return Ok(RequestNextResponse::RollBackward(rollback_to, tip));
             }
 
             // what are you waiting for?
@@ -42,7 +42,7 @@ impl MockChainSync {
             if let Some(info) = chain.get(requested_block_number as usize) {
                 self.consumer_tip =
                     BlockReference::Point(requested_block_number, info.block_hash.clone());
-                return RequestNextResponse::RollForward(info.clone(), tip);
+                return Ok(RequestNextResponse::RollForward(info.clone(), tip));
             }
 
             // and now we wait until the chain changes and try again
@@ -51,10 +51,10 @@ impl MockChainSync {
         }
     }
 
-    pub async fn find_intersect(
+    async fn find_intersect(
         &mut self,
         points: &[BlockReference],
-    ) -> (Option<BlockReference>, BlockReference) {
+    ) -> Result<(Option<BlockReference>, BlockReference)> {
         let chain = self.chain.read_lock().await;
         let intersect = points.iter().find_map(|point| match point {
             BlockReference::Origin => chain.first(),
@@ -64,7 +64,11 @@ impl MockChainSync {
         });
         self.consumer_tip = intersect.map(|b| b.as_reference()).unwrap_or_default();
         let tip = chain.last().map(|b| b.as_reference()).unwrap_or_default();
-        (intersect.map(|i| i.as_reference()), tip)
+        Ok((intersect.map(|i| i.as_reference()), tip))
+    }
+
+    async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
+        self.chain.request_block(block_ref).await
     }
 }
 
@@ -103,11 +107,11 @@ impl MockChain {
         }
     }
 
-    pub async fn read_lock(&self) -> RwLockReadGuard<Vec<BlockInfo>> {
+    async fn read_lock(&self) -> RwLockReadGuard<Vec<BlockInfo>> {
         self.chain.read().await
     }
 
-    pub async fn wait_for_new_block(&self) {
+    async fn wait_for_new_block(&self) {
         self.new_block.notified().await;
     }
 
@@ -123,15 +127,15 @@ impl MockChain {
     }
 
     // this is a simpler version of request_range from the block fetch protocol.
-    pub async fn request_block(&self, block_ref: &BlockReference) -> Option<BlockInfo> {
+    pub async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
         match block_ref {
-            BlockReference::Origin => None,
+            BlockReference::Origin => Ok(None),
             BlockReference::Point(number, hash) => {
                 let chain = self.chain.read().await;
-                chain
+                Ok(chain
                     .get(*number as usize)
                     .filter(|b| b.block_hash == *hash)
-                    .cloned()
+                    .cloned())
             }
         }
     }

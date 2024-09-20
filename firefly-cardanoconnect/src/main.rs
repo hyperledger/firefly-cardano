@@ -48,11 +48,12 @@ struct AppState {
 #[instrument(err(Debug))]
 async fn init_state(config: &CardanoConnectConfig) -> Result<AppState> {
     let persistence = Arc::new(Persistence::default());
+    let blockchain = Arc::new(BlockchainClient::new(config).await?);
 
     let state = AppState {
-        blockchain: Arc::new(BlockchainClient::new(config).await?),
+        blockchain: blockchain.clone(),
         signer: Arc::new(CardanoSigner::new(config)?),
-        stream_manager: Arc::new(StreamManager::new(persistence).await?),
+        stream_manager: Arc::new(StreamManager::new(persistence, blockchain).await?),
     };
 
     Ok(state)

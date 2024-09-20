@@ -555,6 +555,7 @@ version = "0.1.0"
 dependencies = [
  "aide",
  "anyhow",
+ "async-trait",
  "axum",
  "chrono",
  "clap",

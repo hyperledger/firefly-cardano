@@ -16,6 +16,7 @@ use tokio::{
 use tracing::warn;
 
 use crate::{
+    blockchain::BlockchainClient,
     persistence::Persistence,
     streams::{blockchain::ListenerEvent, EventData, EventId},
 };
@@ -35,8 +36,11 @@ pub struct Multiplexer {
 }
 
 impl Multiplexer {
-    pub async fn new(persistence: Arc<Persistence>) -> Result<Self> {
-        let data_source = Arc::new(DataSource::new());
+    pub async fn new(
+        persistence: Arc<Persistence>,
+        blockchain: Arc<BlockchainClient>,
+    ) -> Result<Self> {
+        let data_source = Arc::new(DataSource::new(blockchain));
 
         let dispatchers = DashMap::new();
         let stream_ids_by_topic = DashMap::new();
