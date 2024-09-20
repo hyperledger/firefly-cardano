@@ -9,6 +9,7 @@ use async_trait::async_trait;
 use mocks::MockChain;
 use n2c::NodeToClient;
 use pallas_primitives::conway::Tx;
+use pallas_traverse::wellknown::GenesisValues;
 use serde::Deserialize;
 use tokio::sync::RwLock;
 
@@ -55,6 +56,13 @@ impl BlockchainConfig {
             Network::Mainnet => "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
         }
     }
+    fn genesis_values(&self) -> GenesisValues {
+        match self.network.unwrap_or(Network::Mainnet) {
+            Network::PreProd => GenesisValues::preprod(),
+            Network::Preview => GenesisValues::preview(),
+            Network::Mainnet => GenesisValues::mainnet(),
+        }
+    }
 }
 
 enum ClientImpl {
@@ -77,6 +85,7 @@ impl BlockchainClient {
                 &blockchain.socket,
                 blockchain.magic(),
                 blockchain.genesis_hash(),
+                blockchain.genesis_values(),
                 blockchain.blockfrost_key.as_ref(),
             )
             .await?;

@@ -12,7 +12,8 @@ use pallas_network::{
         Point,
     },
 };
-use pallas_primitives::conway::{MintedBlock, Tx};
+use pallas_primitives::conway::Tx;
+use pallas_traverse::{wellknown::GenesisValues, MultiEraBlock, MultiEraHeader};
 
 use crate::{
     config::Secret,
@@ -25,6 +26,7 @@ pub struct NodeToClient {
     socket: PathBuf,
     magic: u64,
     genesis_hash: String,
+    genesis_values: GenesisValues,
     blockfrost: Option<BlockfrostAPI>,
     client: NodeClient,
 }
@@ -34,6 +36,7 @@ impl NodeToClient {
         socket: &Path,
         magic: u64,
         genesis_hash: &str,
+        genesis_values: GenesisValues,
         blockfrost_key: Option<&Secret<String>>,
     ) -> Result<Self> {
         let client = Self::connect(socket, magic).await?;
@@ -43,6 +46,7 @@ impl NodeToClient {
             socket: socket.to_path_buf(),
             magic,
             genesis_hash: genesis_hash.to_string(),
+            genesis_values,
             blockfrost,
             client,
         })
@@ -79,10 +83,12 @@ impl NodeToClient {
             bail!("Cannot use node-to-client without a blockfrost key")
         };
         let genesis_hash = self.genesis_hash.clone();
+        let genesis_values = self.genesis_values.clone();
         Ok(N2cChainSync {
             client,
             blockfrost,
             genesis_hash,
+            genesis_values,
         })
     }
 
@@ -97,6 +103,7 @@ pub struct N2cChainSync {
     client: NodeClient,
     blockfrost: BlockfrostAPI,
     genesis_hash: String,
+    genesis_values: GenesisValues,
 }
 
 #[async_trait]
@@ -112,7 +119,9 @@ impl ChainSyncClient for N2cChainSync {
             match res {
                 NextResponse::Await => continue,
                 NextResponse::RollForward(content, tip) => {
-                    let info = content_to_block_info(content).context("error parsing new block")?;
+                    let info = self
+                        .content_to_block_info(content)
+                        .context("error parsing new block")?;
                     let tip = point_to_block_ref(tip.0);
                     return Ok(RequestNextResponse::RollForward(info, tip));
                 }
@@ -172,6 +181,54 @@ impl ChainSyncClient for N2cChainSync {
     }
 }
 
+impl N2cChainSync {
+    fn content_to_block_info(&self, content: BlockContent) -> Result<BlockInfo> {
+        let block = MultiEraBlock::decode(&content.0)?;
+
+        let (block_height, block_slot) = match block.header() {
+            MultiEraHeader::EpochBoundary(x) => {
+                let height = x.consensus_data.difficulty.first().cloned();
+                let slot = self
+                    .genesis_values
+                    .relative_slot_to_absolute(x.consensus_data.epoch_id, 0);
+                (height, slot)
+            }
+            MultiEraHeader::ShelleyCompatible(x) => {
+                let height = Some(x.header_body.block_number);
+                let slot = x.header_body.slot;
+                (height, slot)
+            }
+            MultiEraHeader::BabbageCompatible(x) => {
+                let height = Some(x.header_body.block_number);
+                let slot = x.header_body.slot;
+                (height, slot)
+            }
+            MultiEraHeader::Byron(x) => {
+                let height = x.consensus_data.2.first().cloned();
+                let slot = self
+                    .genesis_values
+                    .relative_slot_to_absolute(x.consensus_data.0.epoch, x.consensus_data.0.slot);
+                (height, slot)
+            }
+        };
+
+        let block_hash = hex::encode(block.hash());
+        let parent_hash = block.header().previous_hash().map(hex::encode);
+        let transaction_hashes = block
+            .txs()
+            .iter()
+            .map(|tx| hex::encode(tx.hash()))
+            .collect();
+        Ok(BlockInfo {
+            block_height,
+            block_slot: Some(block_slot),
+            block_hash,
+            parent_hash,
+            transaction_hashes,
+        })
+    }
+}
+
 fn block_ref_to_point(block_ref: &BlockReference) -> Option<Point> {
     match block_ref {
         BlockReference::Origin => Some(Point::Origin),
@@ -186,33 +243,4 @@ fn point_to_block_ref(point: Point) -> BlockReference {
         Point::Origin => BlockReference::Origin,
         Point::Specific(number, hash) => BlockReference::Point(Some(number), hex::encode(hash)),
     }
-}
-
-fn content_to_block_info(content: BlockContent) -> Result<BlockInfo> {
-    type BlockWrapper<'b> = (u16, MintedBlock<'b>);
-
-    let (_, block): BlockWrapper = minicbor::decode(&content.0)?;
-    let block_hash = {
-        let header = block.header.raw_cbor();
-        let hash = Hasher::<256>::hash(header);
-        hex::encode(hash)
-    };
-    let header = &block.header.header_body;
-    let parent_hash = header.prev_hash.map(hex::encode);
-    let transaction_hashes = block
-        .transaction_bodies
-        .iter()
-        .map(|t| {
-            let body = t.raw_cbor();
-            let hash = Hasher::<256>::hash(body);
-            hex::encode(hash)
-        })
-        .collect();
-    Ok(BlockInfo {
-        block_height: Some(header.block_number),
-        block_slot: Some(header.slot),
-        block_hash,
-        parent_hash,
-        transaction_hashes,
-    })
 }

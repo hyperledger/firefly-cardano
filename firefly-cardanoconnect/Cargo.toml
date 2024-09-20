@@ -17,6 +17,7 @@ pallas-codec = "0.30"
 pallas-crypto = "0.30"
 pallas-primitives = "0.30"
 pallas-network = "0.30"
+pallas-traverse = "0.30"
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.20"
