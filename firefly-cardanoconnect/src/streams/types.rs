@@ -55,7 +55,7 @@ pub struct StreamCheckpoint {
 #[derive(Clone, Debug, Hash, PartialEq, Eq)]
 pub enum BlockReference {
     Origin,
-    Point(u64, String),
+    Point(Option<u64>, String),
 }
 impl Default for BlockReference {
     fn default() -> Self {
@@ -86,18 +86,6 @@ impl PartialOrd for BlockReference {
         }
     }
 }
-impl BlockReference {
-    pub fn equivalent(&self, other: &Self) -> bool {
-        match (self, other) {
-            (BlockReference::Origin, BlockReference::Origin) => true,
-            (BlockReference::Point(number, _), BlockReference::Origin) => *number == 0,
-            (BlockReference::Origin, BlockReference::Point(number, _)) => *number == 0,
-            (BlockReference::Point(l_number, l_hash), BlockReference::Point(r_number, r_hash)) => {
-                l_number == r_number && l_hash == r_hash
-            }
-        }
-    }
-}
 
 #[derive(Clone, Debug, Default)]
 pub struct EventReference {
@@ -109,14 +97,15 @@ pub struct EventReference {
 
 #[derive(Clone, Debug)]
 pub struct BlockInfo {
-    pub block_number: u64,
+    pub block_height: Option<u64>,
+    pub block_slot: Option<u64>,
     pub block_hash: String,
-    pub parent_hash: String,
+    pub parent_hash: Option<String>,
     pub transaction_hashes: Vec<String>,
 }
 impl BlockInfo {
     pub fn as_reference(&self) -> BlockReference {
-        BlockReference::Point(self.block_number, self.block_hash.clone())
+        BlockReference::Point(self.block_slot, self.block_hash.clone())
     }
 }
 
@@ -124,7 +113,7 @@ impl BlockInfo {
 pub struct EventId {
     pub listener_id: ListenerId,
     pub block_hash: String,
-    pub block_number: u64,
+    pub block_number: Option<u64>,
     pub transaction_hash: String,
     pub transaction_index: u64,
     pub log_index: u64,

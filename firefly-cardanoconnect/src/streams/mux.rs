@@ -346,11 +346,11 @@ impl StreamDispatcherWorker {
             for listener in self.listeners.values_mut() {
                 let hwm = hwms.get(&listener.id).unwrap();
                 let sync_event = listener.sync.get_event(&hwm.block);
-                sync_events.push((listener.id.clone(), sync_event));
+                sync_events.push((listener.id.clone(), hwm.block.clone(), sync_event));
             }
-            let (listener_id, sync_event) = sync_events
+            let (listener_id, block_ref, sync_event) = sync_events
                 .into_iter()
-                .max_by(|l, r| Self::compare_stream_event_priority(&l.1, &r.1))
+                .max_by(|l, r| Self::compare_stream_event_priority(&l.2, &r.2))
                 .expect("no listeners to produce events!");
 
             // process it, updating our high water marks as we go
@@ -368,21 +368,19 @@ impl StreamDispatcherWorker {
                 break;
             }
             let listener = self.listeners.get_mut(&listener_id).unwrap();
-            let (update_from, update_to, rollback) = match sync_event {
-                ListenerEvent::Process(block) => {
-                    let update_from = block.as_reference();
-                    let update_to = listener.sync.get_next(&update_from).await;
-                    (update_from, update_to, false)
+            let (update_to, rollback) = match sync_event {
+                ListenerEvent::Process(_) => {
+                    let update_to = listener.sync.get_next(&block_ref).await;
+                    (update_to, false)
                 }
-                ListenerEvent::Rollback(block) => {
-                    let update_from = block.as_reference();
-                    let update_to = Some(listener.sync.get_next_rollback(&update_from));
-                    (update_from, update_to, true)
+                ListenerEvent::Rollback(_) => {
+                    let update_to = Some(listener.sync.get_next_rollback(&block_ref));
+                    (update_to, true)
                 }
             };
             if let Some(next_ref) = update_to {
                 for hwm in hwms.values_mut() {
-                    if hwm.block.equivalent(&update_from) {
+                    if hwm.block == block_ref {
                         *hwm = EventReference {
                             block: next_ref.clone(),
                             rollback,
@@ -449,9 +447,9 @@ impl StreamDispatcherWorker {
 
     fn matches_ref(block: &BlockInfo, block_ref: &BlockReference) -> bool {
         match block_ref {
-            BlockReference::Origin => block.block_number == 0,
-            BlockReference::Point(number, hash) => {
-                block.block_number == *number && block.block_hash == *hash
+            BlockReference::Origin => block.block_slot.is_none() && block.block_height.is_none(),
+            BlockReference::Point(slot, hash) => {
+                block.block_slot == *slot && block.block_hash == *hash
             }
         }
     }
@@ -528,7 +526,7 @@ impl StreamDispatcherWorker {
                     let id = EventId {
                         listener_id: listener.id.clone(),
                         block_hash: block.block_hash.clone(),
-                        block_number: block.block_number,
+                        block_number: block.block_height,
                         transaction_hash: tx_hash.clone(),
                         transaction_index: tx_idx,
                         log_index: 0,
@@ -552,10 +550,10 @@ impl StreamDispatcherWorker {
             (ListenerEvent::Process(_), ListenerEvent::Rollback(_)) => Ordering::Less,
             (ListenerEvent::Rollback(_), ListenerEvent::Process(_)) => Ordering::Greater,
             (ListenerEvent::Process(l), ListenerEvent::Process(r)) => {
-                r.block_number.cmp(&l.block_number)
+                r.block_slot.cmp(&l.block_slot)
             }
             (ListenerEvent::Rollback(l), ListenerEvent::Rollback(r)) => {
-                l.block_number.cmp(&r.block_number)
+                l.block_slot.cmp(&r.block_slot)
             }
         }
     }

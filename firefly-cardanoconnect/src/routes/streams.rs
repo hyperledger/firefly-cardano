@@ -230,7 +230,7 @@ fn parse_block_reference(value: &str) -> ApiResult<Option<BlockReference>> {
                 return Err(ApiError::bad_request("invalid block reference"));
             };
             Ok(Some(BlockReference::Point(
-                slot_number,
+                Some(slot_number),
                 slot_hash.to_string(),
             )))
         }

@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::{fmt::Debug, path::Path};
 
 use anyhow::Result;
 use firefly_server::{
@@ -23,6 +23,15 @@ pub struct CardanoConnectConfig {
 pub struct ConnectorConfig {
     pub signer_url: String,
     pub blockchain: BlockchainConfig,
+}
+
+#[derive(Deserialize, Clone)]
+pub struct Secret<T>(pub T);
+
+impl<T> Debug for Secret<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str("<redacted>")
+    }
 }
 
 pub fn load_config(config_file: Option<&Path>) -> Result<CardanoConnectConfig> {

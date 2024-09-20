@@ -48,6 +48,7 @@ pub struct ChainListener {
     rollbacks: HashMap<BlockReference, BlockInfo>,
     sync_event_source: mpsc::Receiver<ChainSyncEvent>,
     block_record_sink: mpsc::UnboundedSender<BlockRecord>,
+    genesis_hash: String,
 }
 
 impl ChainListener {
@@ -69,25 +70,29 @@ impl ChainListener {
     }
 
     pub fn get_event(&mut self, block_ref: &BlockReference) -> ListenerEvent {
-        let (target_number, target_hash) = match block_ref {
-            BlockReference::Origin => (0, None),
-            BlockReference::Point(number, hash) => (*number, Some(hash.clone())),
+        let (target_slot, target_hash) = match block_ref {
+            BlockReference::Origin => (None, self.genesis_hash.clone()),
+            BlockReference::Point(slot, hash) => (*slot, hash.clone()),
         };
 
-        if self
-            .history
-            .front()
-            .is_some_and(|b| b.block_number > target_number)
-        {
-            panic!("Caller requested a block which was too old for us to know about")
-        }
+        if let Some(slot) = target_slot {
+            if self
+                .history
+                .iter()
+                .find_map(|b| b.block_slot)
+                .is_some_and(|s| slot < s)
+            {
+                panic!("Caller requested a block which was too old for us to know about ({slot}:{target_hash} vs {:?})", self.history.front());
+            }
 
-        // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
-        if self.history.back().is_some_and(|tip| {
-            tip.block_number < target_number + APPROXIMATELY_IMMUTABLE_LENGTH as u64
-        }) {
-            while let Ok(sync_event) = self.sync_event_source.try_recv() {
-                self.handle_sync_event(sync_event);
+            // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
+            if self.history.back().is_some_and(|tip| {
+                tip.block_slot
+                    .is_some_and(|s| s < slot + APPROXIMATELY_IMMUTABLE_LENGTH as u64)
+            }) {
+                while let Ok(sync_event) = self.sync_event_source.try_recv() {
+                    self.handle_sync_event(sync_event);
+                }
             }
         }
 
@@ -97,30 +102,19 @@ impl ChainListener {
         }
 
         // If we have it already, return it
-        if self
+        let block = self
             .history
-            .back()
-            .is_some_and(|tip| tip.block_number >= target_number)
-        {
-            let block = self
-                .history
-                .iter()
-                .rev()
-                .find(|b| b.block_number == target_number)
-                .expect("our persisted history has gaps");
-            if target_hash.is_some_and(|h| h != block.block_hash) {
-                panic!("Caller requested a nonexistent block, and we never heard that it was rolled back");
-            }
-            return ListenerEvent::Process(block.clone());
-        }
-
-        panic!("Caller asked about an event far in the future");
+            .iter()
+            .rev()
+            .find(|b| b.block_hash == target_hash)
+            .expect("Unrecognized hash");
+        ListenerEvent::Process(block.clone())
     }
 
     pub async fn get_next(&mut self, block_ref: &BlockReference) -> Option<BlockReference> {
-        let (target_number, prev_hash) = match block_ref {
-            BlockReference::Origin => (1, None),
-            BlockReference::Point(number, hash) => (*number + 1, Some(hash.clone())),
+        let (prev_slot, prev_hash) = match block_ref {
+            BlockReference::Origin => (None, self.genesis_hash.clone()),
+            BlockReference::Point(slot, hash) => (*slot, hash.clone()),
         };
 
         loop {
@@ -130,22 +124,23 @@ impl ChainListener {
                 return None;
             }
 
-            // Have we already seen the next block? Great, return it
-            if self
-                .history
-                .back()
-                .is_some_and(|b| b.block_number >= target_number)
-            {
-                let block = self
-                    .history
-                    .iter()
-                    .rev()
-                    .find(|b| b.block_number == target_number)
-                    .expect("our persisted history has gaps");
-                if prev_hash.as_ref().is_some_and(|h| *h != block.parent_hash) {
-                    panic!("The next block in the chain is from a different fork, and we never heard this block was rolled back");
+            for (index, block) in self.history.iter().enumerate().rev() {
+                if block.block_hash == prev_hash {
+                    if let Some(next) = self.history.get(index + 1) {
+                        // we already have the block which comes after this!
+                        return Some(next.as_reference());
+                    } else {
+                        // we don't have that block yet, so process events until we do
+                        break;
+                    }
                 }
-                return Some(block.as_reference());
+                // If we can tell by the slots we've gone too far back, break early
+                if block
+                    .block_slot
+                    .is_some_and(|slot| prev_slot.is_some_and(|target| slot < target))
+                {
+                    break;
+                }
             }
 
             // We don't have it, wait until the chain has progressed before checking again
@@ -169,10 +164,6 @@ impl ChainListener {
     fn handle_sync_event(&mut self, sync_event: ChainSyncEvent) {
         match sync_event {
             ChainSyncEvent::RollForward(block) => {
-                assert!(self
-                    .history
-                    .back()
-                    .is_some_and(|n| n.block_number + 1 == block.block_number));
                 let record = BlockRecord {
                     block: block.clone(),
                     rolled_back: false,
@@ -181,14 +172,14 @@ impl ChainListener {
                 self.history.push_back(block);
             }
             ChainSyncEvent::RollBackward(rollback_to) => {
-                let (target_number, target_hash) = match rollback_to {
-                    BlockReference::Origin => (0, None),
-                    BlockReference::Point(number, hash) => (number, Some(hash)),
+                let target_hash = match rollback_to {
+                    BlockReference::Origin => self.genesis_hash.clone(),
+                    BlockReference::Point(_, hash) => hash,
                 };
                 while self
                     .history
                     .back()
-                    .is_some_and(|i| i.block_number > target_number)
+                    .is_some_and(|i| i.block_hash != target_hash)
                 {
                     let rolled_back = self.history.pop_back().unwrap();
                     let record = BlockRecord {
@@ -199,16 +190,10 @@ impl ChainListener {
                     self.rollbacks
                         .insert(rolled_back.as_reference(), rolled_back);
                 }
-                let new_tip = self
-                    .history
-                    .back()
-                    .expect("cannot roll back past recorded history");
-                if new_tip.block_number != target_number {
-                    panic!("we have a gap in blockchain history");
-                }
-                if target_hash.is_some_and(|h| *h != new_tip.block_hash) {
-                    panic!("we rolled back to the wrong point");
-                }
+                assert!(
+                    !self.history.is_empty(),
+                    "tried rolling back past recorded history"
+                );
             }
         }
     }
@@ -228,7 +213,6 @@ impl ChainListener {
                 history.push(record.block.clone());
             }
         }
-        history.sort_by_key(|b| b.block_number);
         let mut history: VecDeque<BlockInfo> = history.into();
 
         let mut sync = chain.sync().await?;
@@ -246,7 +230,7 @@ impl ChainListener {
         let mut rollbacks = HashMap::new();
         while history
             .back()
-            .is_some_and(|i| i.block_number > head.block_number)
+            .is_some_and(|i| i.block_hash != head.block_hash)
         {
             let rolled_back = history.pop_back().unwrap();
             rollbacks.insert(rolled_back.as_reference(), rolled_back);
@@ -259,6 +243,7 @@ impl ChainListener {
         Ok(Self {
             history,
             rollbacks,
+            genesis_hash: chain.genesis_hash(),
             sync_event_source,
             block_record_sink,
         })
@@ -297,16 +282,15 @@ impl ChainListener {
             bail!("could not start listening from {from:?}, as it does not exist on-chain");
         };
 
-        let mut oldest_number = head.block_number;
         let mut prev_hash = head.parent_hash.clone();
         let mut history = VecDeque::new();
         history.push_back(head);
 
         for _ in 0..APPROXIMATELY_IMMUTABLE_LENGTH {
-            if oldest_number == 0 {
+            let Some(prev) = prev_hash else {
                 break;
-            }
-            let prev_ref = BlockReference::Point(oldest_number - 1, prev_hash);
+            };
+            let prev_ref = BlockReference::Point(None, prev);
             let prev_block = match sync.request_block(&prev_ref).await {
                 Err(err) => {
                     warn!("could not populate a history for this listener, it may not be able to recover from rollback: {}", err);
@@ -318,7 +302,6 @@ impl ChainListener {
                 Ok(Some(prev_block)) => prev_block,
             };
 
-            oldest_number = prev_block.block_number;
             prev_hash = prev_block.parent_hash.clone();
             history.push_front(prev_block);
         }
@@ -330,6 +313,7 @@ impl ChainListener {
         Ok(Self {
             history,
             rollbacks: HashMap::new(),
+            genesis_hash: chain.genesis_hash(),
             sync_event_source,
             block_record_sink,
         })

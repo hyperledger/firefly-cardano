@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
-    config::CardanoConnectConfig,
+    config::{CardanoConnectConfig, Secret},
     streams::{BlockInfo, BlockReference},
 };
 use anyhow::{bail, Result};
@@ -19,8 +19,10 @@ mod n2c;
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainConfig {
     pub socket: PathBuf,
+    pub blockfrost_key: Option<Secret<String>>,
     pub network: Option<Network>,
     pub network_magic: Option<u64>,
+    pub genesis_hash: Option<String>,
     pub era: u16,
 }
 
@@ -43,6 +45,16 @@ impl BlockchainConfig {
             Network::Mainnet => 764824073,
         }
     }
+    fn genesis_hash(&self) -> &str {
+        if let Some(hash) = &self.genesis_hash {
+            return hash;
+        }
+        match self.network.unwrap_or(Network::Mainnet) {
+            Network::PreProd => "f28f1c1280ea0d32f8cd3143e268650d6c1a8e221522ce4a7d20d62fc09783e1",
+            Network::Preview => "83de1d7302569ad56cf9139a41e2e11346d4cb4a31c00142557b6ab3fa550761",
+            Network::Mainnet => "5f20df933584822601f9e3f8c024eb5eb252fe8cefb24d1317dc3d432e940ebb",
+        }
+    }
 }
 
 enum ClientImpl {
@@ -52,6 +64,7 @@ enum ClientImpl {
 
 pub struct BlockchainClient {
     client: ClientImpl,
+    genesis_hash: String,
     era: u16,
 }
 
@@ -60,12 +73,19 @@ impl BlockchainClient {
         let blockchain = &config.connector.blockchain;
 
         let n2c = {
-            let client = NodeToClient::new(&blockchain.socket, blockchain.magic()).await?;
+            let client = NodeToClient::new(
+                &blockchain.socket,
+                blockchain.magic(),
+                blockchain.genesis_hash(),
+                blockchain.blockfrost_key.as_ref(),
+            )
+            .await?;
             RwLock::new(client)
         };
 
         Ok(Self {
             client: ClientImpl::NodeToClient(n2c),
+            genesis_hash: blockchain.genesis_hash().to_string(),
             era: blockchain.era,
         })
     }
@@ -73,10 +93,16 @@ impl BlockchainClient {
     #[allow(unused)]
     pub fn mock() -> Self {
         let mock_chain = MockChain::new(3000);
+        let genesis_hash = mock_chain.genesis_hash();
         Self {
             client: ClientImpl::Mock(mock_chain),
+            genesis_hash,
             era: 0,
         }
+    }
+
+    pub fn genesis_hash(&self) -> String {
+        self.genesis_hash.clone()
     }
 
     pub async fn submit(&self, transaction: Tx) -> Result<String> {

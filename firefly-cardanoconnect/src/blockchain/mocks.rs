@@ -33,15 +33,14 @@ impl ChainSyncClient for MockChainSync {
             }
 
             // what are you waiting for?
-            let requested_block_number = match &self.consumer_tip {
-                BlockReference::Origin => 0,
-                BlockReference::Point(number, _) => *number + 1,
+            let next_index = match &self.consumer_tip {
+                BlockReference::Origin => Some(1),
+                BlockReference::Point(_, hash) => self.chain.indexes.get(hash).map(|i| *i + 1),
             };
 
             // if we have it, give it
-            if let Some(info) = chain.get(requested_block_number as usize) {
-                self.consumer_tip =
-                    BlockReference::Point(requested_block_number, info.block_hash.clone());
+            if let Some(info) = next_index.and_then(|i| chain.get(i)) {
+                self.consumer_tip = BlockReference::Point(info.block_slot, info.block_hash.clone());
                 return Ok(RequestNextResponse::RollForward(info.clone(), tip));
             }
 
@@ -58,9 +57,9 @@ impl ChainSyncClient for MockChainSync {
         let chain = self.chain.read_lock().await;
         let intersect = points.iter().find_map(|point| match point {
             BlockReference::Origin => chain.first(),
-            BlockReference::Point(number, hash) => chain
-                .get(*number as usize)
-                .filter(|b| b.block_hash == *hash),
+            BlockReference::Point(_, hash) => {
+                self.chain.indexes.get(hash).and_then(|i| chain.get(*i))
+            }
         });
         self.consumer_tip = intersect.map(|b| b.as_reference()).unwrap_or_default();
         let tip = chain.last().map(|b| b.as_reference()).unwrap_or_default();
@@ -77,6 +76,7 @@ impl ChainSyncClient for MockChainSync {
 pub struct MockChain {
     // the real implementation of course won't be in memory
     chain: Arc<RwLock<Vec<BlockInfo>>>,
+    indexes: Arc<DashMap<String, usize>>,
     new_block: Arc<Notify>,
     rolled_back: Arc<DashMap<BlockReference, BlockReference>>,
 }
@@ -84,10 +84,12 @@ pub struct MockChain {
 impl MockChain {
     pub fn new(initial_height: usize) -> Self {
         let chain = Arc::new(RwLock::new(vec![]));
+        let indexes = Arc::new(DashMap::new());
         let new_block = Arc::new(Notify::new());
         let rolled_back = Arc::new(DashMap::new());
         tokio::spawn(Self::generate(
             chain.clone(),
+            indexes.clone(),
             new_block.clone(),
             rolled_back.clone(),
             initial_height,
@@ -95,9 +97,19 @@ impl MockChain {
 
         Self {
             chain,
+            indexes,
             new_block,
             rolled_back,
         }
+    }
+
+    pub fn genesis_hash(&self) -> String {
+        self.chain
+            .blocking_read()
+            .first()
+            .unwrap()
+            .block_hash
+            .clone()
     }
 
     pub fn sync(&self) -> MockChainSync {
@@ -130,11 +142,13 @@ impl MockChain {
     pub async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
         match block_ref {
             BlockReference::Origin => Ok(None),
-            BlockReference::Point(number, hash) => {
+            BlockReference::Point(slot, hash) => {
                 let chain = self.chain.read().await;
                 Ok(chain
-                    .get(*number as usize)
-                    .filter(|b| b.block_hash == *hash)
+                    .iter()
+                    .rev()
+                    .find(|b| b.block_hash == *hash)
+                    .filter(|b| b.block_slot == *slot)
                     .cloned())
             }
         }
@@ -143,6 +157,7 @@ impl MockChain {
     // TODO: roll back sometimes
     async fn generate(
         chain: Arc<RwLock<Vec<BlockInfo>>>,
+        indexes: Arc<DashMap<String, usize>>,
         new_block: Arc<Notify>,
         _rolled_back: Arc<DashMap<BlockReference, BlockReference>>,
         initial_height: usize,
@@ -151,21 +166,25 @@ impl MockChain {
         {
             let mut lock = chain.write().await;
             for _ in 0..initial_height {
-                Self::generate_block(&mut rng, &mut lock);
+                Self::generate_block(&mut rng, &mut lock, &indexes);
             }
         }
         loop {
             time::sleep(Duration::from_secs(1)).await;
             let mut lock = chain.write().await;
-            Self::generate_block(&mut rng, &mut lock);
+            Self::generate_block(&mut rng, &mut lock, &indexes);
             new_block.notify_waiters();
         }
     }
 
-    fn generate_block(rng: &mut ChaChaRng, chain: &mut Vec<BlockInfo>) {
-        let (block_number, parent_hash) = match chain.last() {
-            Some(block) => (block.block_number + 1, block.block_hash.clone()),
-            None => (0, "".into()),
+    fn generate_block(
+        rng: &mut ChaChaRng,
+        chain: &mut Vec<BlockInfo>,
+        indexes: &DashMap<String, usize>,
+    ) {
+        let (block_height, parent_hash) = match chain.last() {
+            Some(block) => (Some(chain.len() as u64), Some(block.block_hash.clone())),
+            None => (None, None),
         };
 
         let mut transaction_hashes = vec![];
@@ -173,11 +192,13 @@ impl MockChain {
             transaction_hashes.push(Self::generate_hash(rng));
         }
         let block = BlockInfo {
-            block_number,
+            block_height,
+            block_slot: block_height,
             block_hash: Self::generate_hash(rng),
             parent_hash,
             transaction_hashes,
         };
+        indexes.insert(block.block_hash.clone(), chain.len());
         chain.push(block);
     }
 

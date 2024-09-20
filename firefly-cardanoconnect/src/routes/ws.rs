@@ -143,7 +143,7 @@ struct Event {
     listener_id: Option<String>,
     signature: String,
     block_hash: String,
-    block_number: u64,
+    block_number: Option<u64>,
     transaction_hash: String,
     transaction_index: u64,
     log_index: u64,
