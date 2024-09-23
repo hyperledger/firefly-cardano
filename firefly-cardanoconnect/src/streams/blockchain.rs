@@ -23,7 +23,7 @@ pub struct DataSource {
     db: Arc<BlockDatabase>,
 }
 
-const APPROXIMATELY_IMMUTABLE_LENGTH: usize = 20;
+const APPROXIMATELY_IMMUTABLE_LENGTH: u64 = 20;
 
 impl DataSource {
     pub fn new(blockchain: Arc<BlockchainClient>) -> Self {
@@ -66,30 +66,24 @@ impl ChainListener {
     }
 
     pub fn get_tip(&self) -> BlockReference {
-        self.history.front().unwrap().as_reference()
+        self.history.back().unwrap().as_reference()
     }
 
-    pub fn get_event(&mut self, block_ref: &BlockReference) -> ListenerEvent {
+    pub fn get_event(&mut self, block_ref: &BlockReference) -> Option<ListenerEvent> {
         let (target_slot, target_hash) = match block_ref {
             BlockReference::Origin => (None, self.genesis_hash.clone()),
             BlockReference::Point(slot, hash) => (*slot, hash.clone()),
         };
 
         if let Some(slot) = target_slot {
+            // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
             if self
                 .history
                 .iter()
+                .rev()
                 .find_map(|b| b.block_slot)
-                .is_some_and(|s| slot < s)
+                .is_some_and(|tip| tip < slot + APPROXIMATELY_IMMUTABLE_LENGTH)
             {
-                panic!("Caller requested a block which was too old for us to know about ({slot}.{target_hash} vs {:?})", self.history.front());
-            }
-
-            // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
-            if self.history.back().is_some_and(|tip| {
-                tip.block_slot
-                    .is_some_and(|s| s < slot + APPROXIMATELY_IMMUTABLE_LENGTH as u64)
-            }) {
                 while let Ok(sync_event) = self.sync_event_source.try_recv() {
                     self.handle_sync_event(sync_event);
                 }
@@ -98,17 +92,21 @@ impl ChainListener {
 
         // If we already know this block has been rolled back, just say so
         if let Some(rollback) = self.rollbacks.get(block_ref) {
-            return ListenerEvent::Rollback(rollback.clone());
+            return Some(ListenerEvent::Rollback(rollback.clone()));
         }
 
-        // If we have it already, return it
-        let block = self
-            .history
+        // If we have it already, return it.
+        // If we don't, no big deal, some other consumer is running at a different point in history
+        self.history
             .iter()
             .rev()
+            .take_while(|b| {
+                !b.block_slot
+                    .is_some_and(|b| target_slot.is_some_and(|t| b < t))
+            })
             .find(|b| b.block_hash == target_hash)
-            .unwrap_or_else(|| panic!("Unrecognized hash {target_hash}"));
-        ListenerEvent::Process(block.clone())
+            .cloned()
+            .map(ListenerEvent::Process)
     }
 
     pub async fn get_next(&mut self, block_ref: &BlockReference) -> Option<BlockReference> {

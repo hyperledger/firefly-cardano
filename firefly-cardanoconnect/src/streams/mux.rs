@@ -348,13 +348,14 @@ impl StreamDispatcherWorker {
             let mut sync_events = vec![];
             for listener in self.listeners.values_mut() {
                 let hwm = hwms.get(&listener.id).unwrap();
-                let sync_event = listener.sync.get_event(&hwm.block);
-                sync_events.push((listener.id.clone(), hwm.block.clone(), sync_event));
+                if let Some(sync_event) = listener.sync.get_event(&hwm.block) {
+                    sync_events.push((listener.id.clone(), hwm.block.clone(), sync_event));
+                }
             }
             let (listener_id, block_ref, sync_event) = sync_events
                 .into_iter()
                 .max_by(|l, r| Self::compare_stream_event_priority(&l.2, &r.2))
-                .expect("no listeners to produce events!");
+                .expect("no listeners had anything to do on this event!");
 
             // process it, updating our high water marks as we go
             match &sync_event {
