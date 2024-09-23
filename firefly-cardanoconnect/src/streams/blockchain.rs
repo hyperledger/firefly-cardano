@@ -82,7 +82,7 @@ impl ChainListener {
                 .find_map(|b| b.block_slot)
                 .is_some_and(|s| slot < s)
             {
-                panic!("Caller requested a block which was too old for us to know about ({slot}:{target_hash} vs {:?})", self.history.front());
+                panic!("Caller requested a block which was too old for us to know about ({slot}.{target_hash} vs {:?})", self.history.front());
             }
 
             // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
@@ -107,7 +107,7 @@ impl ChainListener {
             .iter()
             .rev()
             .find(|b| b.block_hash == target_hash)
-            .expect("Unrecognized hash");
+            .unwrap_or_else(|| panic!("Unrecognized hash {target_hash}"));
         ListenerEvent::Process(block.clone())
     }
 

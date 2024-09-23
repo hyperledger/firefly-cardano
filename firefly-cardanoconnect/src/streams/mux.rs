@@ -272,7 +272,10 @@ impl StreamDispatcherWorker {
                     }
                     continue;
                 }
-                else => { panic!("stream dispatch worker in invalid state"); }
+                else => {
+                    warn!("stream dispatch worker is shutting down");
+                    return;
+                }
             };
             let sink = batch_sink.as_ref().unwrap();
             if let Err(err) = sink.send(batch).await {
@@ -467,7 +470,7 @@ impl StreamDispatcherWorker {
         }
         let mut events = self.find_events(listener, block);
         events.retain(|e| {
-            // throw out any events which came before our high-water mark
+            // throw out any events which came at or before our high-water mark
             let tx_cmp = hwm
                 .tx_index
                 .as_ref()
@@ -475,7 +478,7 @@ impl StreamDispatcherWorker {
             let log_cmp = hwm.log_index.as_ref().map(|log| e.id.log_index.cmp(log));
             match (tx_cmp, log_cmp) {
                 (Some(Ordering::Less), _) => false,
-                (Some(Ordering::Equal), Some(Ordering::Less)) => false,
+                (Some(Ordering::Equal), Some(Ordering::Less | Ordering::Equal)) => false,
                 (_, _) => true,
             }
         });
@@ -501,14 +504,14 @@ impl StreamDispatcherWorker {
                     // if we were rolling back already, throw out events we've already rolled back past
                     match (tx_cmp, log_cmp) {
                         (Some(Ordering::Greater), _) => false,
-                        (Some(Ordering::Equal), Some(Ordering::Greater)) => false,
+                        (Some(Ordering::Equal), Some(Ordering::Greater | Ordering::Equal)) => false,
                         (_, _) => true,
                     }
                 } else {
                     // otherwise, just keep any events that rolling forward would have kept
                     match (tx_cmp, log_cmp) {
                         (Some(Ordering::Less), _) => true,
-                        (Some(Ordering::Equal), Some(Ordering::Less)) => true,
+                        (Some(Ordering::Equal), Some(Ordering::Less | Ordering::Equal)) => true,
                         (_, _) => false,
                     }
                 }
