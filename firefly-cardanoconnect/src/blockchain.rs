@@ -100,9 +100,9 @@ impl BlockchainClient {
     }
 
     #[allow(unused)]
-    pub fn mock() -> Self {
+    pub async fn mock() -> Self {
         let mock_chain = MockChain::new(3000);
-        let genesis_hash = mock_chain.genesis_hash();
+        let genesis_hash = mock_chain.genesis_hash().await;
         Self {
             client: ClientImpl::Mock(mock_chain),
             genesis_hash,

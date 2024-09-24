@@ -103,13 +103,9 @@ impl MockChain {
         }
     }
 
-    pub fn genesis_hash(&self) -> String {
-        self.chain
-            .blocking_read()
-            .first()
-            .unwrap()
-            .block_hash
-            .clone()
+    pub async fn genesis_hash(&self) -> String {
+        self.new_block.notified().await;
+        self.chain.read().await.first().unwrap().block_hash.clone()
     }
 
     pub fn sync(&self) -> MockChainSync {

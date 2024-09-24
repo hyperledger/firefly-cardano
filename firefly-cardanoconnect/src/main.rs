@@ -37,6 +37,8 @@ mod utils;
 struct Args {
     #[clap(short = 'f', long)]
     pub config_file: Option<PathBuf>,
+    #[clap(long)]
+    pub mock_data: bool,
 }
 
 #[derive(Clone)]
@@ -47,9 +49,13 @@ struct AppState {
 }
 
 #[instrument(err(Debug))]
-async fn init_state(config: &CardanoConnectConfig) -> Result<AppState> {
+async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<AppState> {
     let persistence = Arc::new(Persistence::default());
-    let blockchain = Arc::new(BlockchainClient::new(config).await?);
+    let blockchain = if mock_data {
+        Arc::new(BlockchainClient::mock().await)
+    } else {
+        Arc::new(BlockchainClient::new(config).await?)
+    };
 
     let state = AppState {
         blockchain: blockchain.clone(),
@@ -69,7 +75,7 @@ async fn main() -> Result<()> {
 
     instrumentation::init(&config.log)?;
 
-    let state = init_state(&config).await?;
+    let state = init_state(&config, args.mock_data).await?;
 
     let router = ApiRouter::new()
         .api_route("/api/health", get(health))
