@@ -9,7 +9,6 @@ use blockchain::BlockchainClient;
 use clap::Parser;
 use config::{load_config, CardanoConnectConfig};
 use firefly_server::instrumentation;
-use persistence::Persistence;
 use routes::{
     chain::get_chain_tip,
     health::health,
@@ -50,7 +49,7 @@ struct AppState {
 
 #[instrument(err(Debug))]
 async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<AppState> {
-    let persistence = Arc::new(Persistence::default());
+    let persistence = Arc::new(persistence::mock());
     let blockchain = if mock_data {
         Arc::new(BlockchainClient::mock().await)
     } else {

@@ -110,6 +110,12 @@ impl BlockInfo {
 }
 
 #[derive(Clone, Debug)]
+pub struct BlockRecord {
+    pub block: BlockInfo,
+    pub rolled_back: bool,
+}
+
+#[derive(Clone, Debug)]
 pub struct EventId {
     pub listener_id: ListenerId,
     pub block_hash: String,

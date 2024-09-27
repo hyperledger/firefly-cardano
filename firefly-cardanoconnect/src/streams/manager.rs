@@ -13,13 +13,13 @@ use super::{
 };
 
 pub struct StreamManager {
-    persistence: Arc<Persistence>,
+    persistence: Arc<dyn Persistence>,
     mux: Multiplexer,
 }
 
 impl StreamManager {
     pub async fn new(
-        persistence: Arc<Persistence>,
+        persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
     ) -> Result<Self> {
         Ok(Self {

@@ -1,148 +1,43 @@
 use anyhow::Result;
-use dashmap::DashMap;
-use firefly_server::apitypes::{ApiError, ApiResult};
-use tokio::sync::Mutex;
+use async_trait::async_trait;
+use firefly_server::apitypes::ApiResult;
+use mocks::MockPersistence;
 
-use crate::streams::{Listener, ListenerId, Stream, StreamCheckpoint, StreamId};
+use crate::streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId};
 
-#[derive(Default)]
-pub struct Persistence {
-    all_streams: Mutex<Vec<Stream>>,
-    all_listeners: DashMap<StreamId, Vec<Listener>>,
-    all_checkpoints: DashMap<StreamId, StreamCheckpoint>,
-}
+mod mocks;
 
-impl Persistence {
-    pub async fn write_stream(&self, stream: &Stream) -> ApiResult<()> {
-        let mut streams = self.all_streams.lock().await;
-        if streams
-            .iter()
-            .any(|it| it.name == stream.name && it.id != stream.id)
-        {
-            return Err(ApiError::conflict("Stream with that name already exists"));
-        }
-
-        self.all_listeners.entry(stream.id.clone()).or_default();
-
-        match streams.iter_mut().find(|it| it.id == stream.id) {
-            Some(old) => {
-                *old = stream.clone();
-            }
-            None => {
-                streams.push(stream.clone());
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn read_stream(&self, id: &StreamId) -> ApiResult<Option<Stream>> {
-        let streams = self.all_streams.lock().await;
-        Ok(streams.iter().find(|it| it.id == *id).cloned())
-    }
-
-    pub async fn delete_stream(&self, id: &StreamId) -> Result<()> {
-        let mut streams = self.all_streams.lock().await;
-        streams.retain(|it| it.id != *id);
-
-        self.all_listeners.remove(id);
-        self.all_checkpoints.remove(id);
-
-        Ok(())
-    }
-
-    pub async fn list_streams(
+#[async_trait]
+pub trait Persistence: Sync + Send {
+    async fn write_stream(&self, stream: &Stream) -> ApiResult<()>;
+    async fn read_stream(&self, id: &StreamId) -> ApiResult<Option<Stream>>;
+    async fn delete_stream(&self, id: &StreamId) -> Result<()>;
+    async fn list_streams(
         &self,
         after: Option<StreamId>,
         limit: Option<usize>,
-    ) -> Result<Vec<Stream>> {
-        let all_streams = self.all_streams.lock().await;
+    ) -> Result<Vec<Stream>>;
 
-        let streams = all_streams
-            .iter()
-            .filter(|s| !after.as_ref().is_some_and(|v| *v >= s.id))
-            .take(limit.unwrap_or(usize::MAX))
-            .cloned()
-            .collect();
-        Ok(streams)
-    }
-
-    pub async fn write_listener(&self, listener: &Listener) -> ApiResult<()> {
-        let Some(mut listeners) = self.all_listeners.get_mut(&listener.stream_id) else {
-            return Err(ApiError::not_found("No stream found with that ID"));
-        };
-        match listeners.iter_mut().find(|it| it.id == listener.id) {
-            Some(old) => {
-                *old = listener.clone();
-            }
-            None => {
-                listeners.push(listener.clone());
-            }
-        }
-
-        Ok(())
-    }
-
-    pub async fn read_listener(
+    async fn write_listener(&self, listener: &Listener) -> ApiResult<()>;
+    async fn read_listener(
         &self,
         stream_id: &StreamId,
         listener_id: &ListenerId,
-    ) -> ApiResult<Option<Listener>> {
-        let Some(listeners) = self.all_listeners.get(stream_id) else {
-            return Err(ApiError::not_found("No stream found with that ID"));
-        };
-        Ok(listeners.iter().find(|it| it.id == *listener_id).cloned())
-    }
-
-    pub async fn delete_listener(
-        &self,
-        stream_id: &StreamId,
-        listener_id: &ListenerId,
-    ) -> Result<()> {
-        let Some(mut listeners) = self.all_listeners.get_mut(stream_id) else {
-            return Ok(());
-        };
-        listeners.retain(|it| it.id != *listener_id);
-
-        Ok(())
-    }
-
-    pub async fn list_listeners(
+    ) -> ApiResult<Option<Listener>>;
+    async fn delete_listener(&self, stream_id: &StreamId, listener_id: &ListenerId) -> Result<()>;
+    async fn list_listeners(
         &self,
         stream_id: &StreamId,
         after: Option<ListenerId>,
         limit: Option<usize>,
-    ) -> ApiResult<Vec<Listener>> {
-        let Some(stream_listeners) = self.all_listeners.get(stream_id) else {
-            return Err(ApiError::not_found("No stream found with that ID"));
-        };
-        let listeners = stream_listeners
-            .iter()
-            .filter(|l| !after.as_ref().is_some_and(|v| *v >= l.id))
-            .take(limit.unwrap_or(usize::MAX))
-            .cloned()
-            .collect();
-        Ok(listeners)
-    }
+    ) -> ApiResult<Vec<Listener>>;
+    async fn write_checkpoint(&self, checkpoint: &StreamCheckpoint) -> ApiResult<()>;
+    async fn read_checkpoint(&self, stream_id: &StreamId) -> ApiResult<Option<StreamCheckpoint>>;
 
-    pub async fn write_checkpoint(&self, checkpoint: &StreamCheckpoint) -> ApiResult<()> {
-        // check stream existence by checking if we have a (possibly empty) list of listeners for it,
-        // because that's cheaper than locking the streams list
-        if !self.all_listeners.contains_key(&checkpoint.stream_id) {
-            return Err(ApiError::not_found("No stream found with that ID"));
-        }
-        self.all_checkpoints
-            .insert(checkpoint.stream_id.clone(), checkpoint.clone());
-        Ok(())
-    }
+    async fn load_history(&self, listener: &ListenerId) -> Result<Vec<BlockRecord>>;
+    async fn save_block_record(&self, listener: &ListenerId, record: BlockRecord) -> Result<()>;
+}
 
-    pub async fn read_checkpoint(
-        &self,
-        stream_id: &StreamId,
-    ) -> ApiResult<Option<StreamCheckpoint>> {
-        match self.all_checkpoints.get(stream_id) {
-            Some(checkpoint) => Ok(Some(checkpoint.clone())),
-            None => Ok(None),
-        }
-    }
+pub fn mock() -> MockPersistence {
+    MockPersistence::default()
 }

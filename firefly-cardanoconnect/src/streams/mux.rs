@@ -31,16 +31,16 @@ use super::{
 pub struct Multiplexer {
     dispatchers: Arc<DashMap<StreamId, StreamDispatcher>>,
     stream_ids_by_topic: Arc<DashMap<String, StreamId>>,
-    persistence: Arc<Persistence>,
+    persistence: Arc<dyn Persistence>,
     data_source: Arc<DataSource>,
 }
 
 impl Multiplexer {
     pub async fn new(
-        persistence: Arc<Persistence>,
+        persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
     ) -> Result<Self> {
-        let data_source = Arc::new(DataSource::new(blockchain));
+        let data_source = Arc::new(DataSource::new(blockchain, persistence.clone()));
 
         let dispatchers = DashMap::new();
         let stream_ids_by_topic = DashMap::new();
@@ -139,7 +139,7 @@ struct StreamDispatcher {
 impl StreamDispatcher {
     pub async fn new(
         stream: &Stream,
-        persistence: Arc<Persistence>,
+        persistence: Arc<dyn Persistence>,
         data_source: Arc<DataSource>,
     ) -> Result<Self> {
         let all_listeners = persistence
@@ -239,7 +239,7 @@ struct StreamDispatcherWorker {
     batch_number: u64,
     listeners: BTreeMap<ListenerId, ListenerState>,
     hwms: BTreeMap<ListenerId, EventReference>,
-    persistence: Arc<Persistence>,
+    persistence: Arc<dyn Persistence>,
 }
 
 impl StreamDispatcherWorker {

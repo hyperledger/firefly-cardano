@@ -4,13 +4,15 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use dashmap::DashMap;
 use tokio::sync::mpsc;
 use tracing::warn;
 
-use crate::blockchain::{BlockchainClient, ChainSyncClient, RequestNextResponse};
+use crate::{
+    blockchain::{BlockchainClient, ChainSyncClient, RequestNextResponse},
+    persistence::Persistence,
+};
 
-use super::{BlockInfo, BlockReference, ListenerId};
+use super::{BlockInfo, BlockRecord, BlockReference, ListenerId};
 
 #[derive(Debug)]
 pub enum ListenerEvent {
@@ -20,16 +22,16 @@ pub enum ListenerEvent {
 
 pub struct DataSource {
     blockchain: Arc<BlockchainClient>,
-    db: Arc<BlockDatabase>,
+    persistence: Arc<dyn Persistence>,
 }
 
 const APPROXIMATELY_IMMUTABLE_LENGTH: u64 = 20;
 
 impl DataSource {
-    pub fn new(blockchain: Arc<BlockchainClient>) -> Self {
+    pub fn new(blockchain: Arc<BlockchainClient>, persistence: Arc<dyn Persistence>) -> Self {
         Self {
             blockchain,
-            db: Arc::new(BlockDatabase::default()),
+            persistence,
         }
     }
 
@@ -38,7 +40,7 @@ impl DataSource {
         id: ListenerId,
         from: Option<&BlockReference>,
     ) -> Result<ChainListener> {
-        ChainListener::init(id, &self.blockchain, &self.db, from).await
+        ChainListener::init(id, &self.blockchain, &self.persistence, from).await
     }
 }
 
@@ -55,13 +57,14 @@ impl ChainListener {
     async fn init(
         id: ListenerId,
         chain: &BlockchainClient,
-        db: &Arc<BlockDatabase>,
+        persistence: &Arc<dyn Persistence>,
         from: Option<&BlockReference>,
     ) -> Result<Self> {
-        if let Some(records) = db.load_history(&id).await {
-            Self::init_existing(id, chain, db, records).await
+        let records = persistence.load_history(&id).await?;
+        if !records.is_empty() {
+            Self::init_existing(id, chain, persistence, records).await
         } else {
-            Self::init_new(id, chain, db, from).await
+            Self::init_new(id, chain, persistence, from).await
         }
     }
 
@@ -199,7 +202,7 @@ impl ChainListener {
     async fn init_existing(
         id: ListenerId,
         chain: &BlockchainClient,
-        db: &Arc<BlockDatabase>,
+        persistence: &Arc<dyn Persistence>,
         records: Vec<BlockRecord>,
     ) -> Result<Self> {
         let mut history = Vec::new();
@@ -237,7 +240,11 @@ impl ChainListener {
         let (sync_event_sink, sync_event_source) = mpsc::channel(16);
         let (block_record_sink, block_record_source) = mpsc::unbounded_channel();
         tokio::spawn(Self::stay_in_sync(sync, sync_event_sink));
-        tokio::spawn(Self::persist_blocks(id, db.clone(), block_record_source));
+        tokio::spawn(Self::persist_blocks(
+            id,
+            persistence.clone(),
+            block_record_source,
+        ));
         Ok(Self {
             history,
             rollbacks,
@@ -250,7 +257,7 @@ impl ChainListener {
     async fn init_new(
         id: ListenerId,
         chain: &BlockchainClient,
-        db: &Arc<BlockDatabase>,
+        persistence: &Arc<dyn Persistence>,
         from: Option<&BlockReference>,
     ) -> Result<Self> {
         let mut sync = chain.sync().await?;
@@ -307,7 +314,11 @@ impl ChainListener {
         let (sync_event_sink, sync_event_source) = mpsc::channel(16);
         let (block_record_sink, block_record_source) = mpsc::unbounded_channel();
         tokio::spawn(Self::stay_in_sync(sync, sync_event_sink));
-        tokio::spawn(Self::persist_blocks(id, db.clone(), block_record_source));
+        tokio::spawn(Self::persist_blocks(
+            id,
+            persistence.clone(),
+            block_record_source,
+        ));
         Ok(Self {
             history,
             rollbacks: HashMap::new(),
@@ -344,11 +355,13 @@ impl ChainListener {
 
     async fn persist_blocks(
         id: ListenerId,
-        db: Arc<BlockDatabase>,
+        db: Arc<dyn Persistence>,
         mut block_record_source: mpsc::UnboundedReceiver<BlockRecord>,
     ) {
         while let Some(record) = block_record_source.recv().await {
-            db.save_block_record(&id, record).await;
+            if let Err(error) = db.save_block_record(&id, record).await {
+                warn!("could not save record: {error:#}");
+            };
         }
     }
 }
@@ -356,27 +369,4 @@ impl ChainListener {
 enum ChainSyncEvent {
     RollForward(BlockInfo),
     RollBackward(BlockReference),
-}
-
-#[derive(Default)]
-struct BlockDatabase {
-    block_records: Arc<DashMap<ListenerId, HashMap<String, BlockRecord>>>,
-}
-
-impl BlockDatabase {
-    async fn load_history(&self, listener: &ListenerId) -> Option<Vec<BlockRecord>> {
-        let records = self.block_records.get(listener)?;
-        Some(records.values().cloned().collect())
-    }
-
-    async fn save_block_record(&self, listener: &ListenerId, record: BlockRecord) {
-        let mut records = self.block_records.entry(listener.clone()).or_default();
-        records.insert(record.block.block_hash.clone(), record);
-    }
-}
-
-#[derive(Clone)]
-struct BlockRecord {
-    block: BlockInfo,
-    rolled_back: bool,
 }
