@@ -49,7 +49,7 @@ struct AppState {
 
 #[instrument(err(Debug))]
 async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<AppState> {
-    let persistence = Arc::new(persistence::mock());
+    let persistence = persistence::init(&config.persistence).await?;
     let blockchain = if mock_data {
         Arc::new(BlockchainClient::mock().await)
     } else {

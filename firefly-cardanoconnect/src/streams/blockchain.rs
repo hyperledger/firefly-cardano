@@ -311,6 +311,15 @@ impl ChainListener {
             history.push_front(prev_block);
         }
 
+        let records: Vec<_> = history
+            .iter()
+            .map(|block| BlockRecord {
+                block: block.clone(),
+                rolled_back: false,
+            })
+            .collect();
+        persistence.save_block_records(&id, records).await?;
+
         let (sync_event_sink, sync_event_source) = mpsc::channel(16);
         let (block_record_sink, block_record_source) = mpsc::unbounded_channel();
         tokio::spawn(Self::stay_in_sync(sync, sync_event_sink));
@@ -358,11 +367,14 @@ impl ChainListener {
         db: Arc<dyn Persistence>,
         mut block_record_source: mpsc::UnboundedReceiver<BlockRecord>,
     ) {
-        while let Some(record) = block_record_source.recv().await {
-            if let Err(error) = db.save_block_record(&id, record).await {
-                warn!("could not save record: {error:#}");
-            };
+        let mut records = vec![];
+        while block_record_source.recv_many(&mut records, 256).await > 0 {
+            if let Err(error) = db.save_block_records(&id, records).await {
+                warn!("could not save records: {error:#}");
+            }
+            records = vec![];
         }
+        warn!("stopped saving records?");
     }
 }
 

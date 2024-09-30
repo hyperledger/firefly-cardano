@@ -52,7 +52,7 @@ pub struct StreamCheckpoint {
     pub listeners: BTreeMap<ListenerId, EventReference>,
 }
 
-#[derive(Clone, Debug, Hash, PartialEq, Eq)]
+#[derive(Clone, Debug, Hash, PartialEq, Eq, Serialize, Deserialize)]
 pub enum BlockReference {
     Origin,
     Point(Option<u64>, String),
@@ -87,7 +87,7 @@ impl PartialOrd for BlockReference {
     }
 }
 
-#[derive(Clone, Debug, Default)]
+#[derive(Clone, Debug, Default, Serialize, Deserialize)]
 pub struct EventReference {
     pub block: BlockReference,
     pub rollback: bool,

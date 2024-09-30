@@ -153,9 +153,15 @@ impl Persistence for MockPersistence {
         }
     }
 
-    async fn save_block_record(&self, listener: &ListenerId, record: BlockRecord) -> Result<()> {
+    async fn save_block_records(
+        &self,
+        listener: &ListenerId,
+        new_records: Vec<BlockRecord>,
+    ) -> Result<()> {
         let mut records = self.all_blocks.entry(listener.clone()).or_default();
-        records.insert(record.block.block_hash.clone(), record);
+        for record in new_records {
+            records.insert(record.block.block_hash.clone(), record);
+        }
         Ok(())
     }
 }

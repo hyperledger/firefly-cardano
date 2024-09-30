@@ -1,7 +1,7 @@
 #[macro_export]
 macro_rules! strong_id {
     ($Outer:ident, $Inner:ty) => {
-        #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord)]
+        #[derive(Clone, Debug, PartialEq, Eq, Hash, PartialOrd, Ord, serde::Serialize, serde::Deserialize)]
         pub struct $Outer($Inner);
         impl std::fmt::Display for $Outer {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {

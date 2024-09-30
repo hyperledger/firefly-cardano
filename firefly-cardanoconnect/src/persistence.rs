@@ -1,11 +1,29 @@
+use std::sync::Arc;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use firefly_server::apitypes::ApiResult;
 use mocks::MockPersistence;
+use serde::Deserialize;
+use sqlite::{SqliteConfig, SqlitePersistence};
 
 use crate::streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId};
 
 mod mocks;
+mod sqlite;
+
+#[derive(Debug, Deserialize)]
+#[serde(rename_all = "camelCase", tag = "type")]
+pub enum PersistenceConfig {
+    Mock,
+    Sqlite(SqliteConfig),
+}
+
+impl Default for PersistenceConfig {
+    fn default() -> Self {
+        Self::Mock
+    }
+}
 
 #[async_trait]
 pub trait Persistence: Sync + Send {
@@ -35,9 +53,16 @@ pub trait Persistence: Sync + Send {
     async fn read_checkpoint(&self, stream_id: &StreamId) -> ApiResult<Option<StreamCheckpoint>>;
 
     async fn load_history(&self, listener: &ListenerId) -> Result<Vec<BlockRecord>>;
-    async fn save_block_record(&self, listener: &ListenerId, record: BlockRecord) -> Result<()>;
+    async fn save_block_records(
+        &self,
+        listener: &ListenerId,
+        new_records: Vec<BlockRecord>,
+    ) -> Result<()>;
 }
 
-pub fn mock() -> MockPersistence {
-    MockPersistence::default()
+pub async fn init(config: &PersistenceConfig) -> Result<Arc<dyn Persistence>> {
+    match config {
+        PersistenceConfig::Mock => Ok(Arc::new(MockPersistence::default())),
+        PersistenceConfig::Sqlite(c) => Ok(Arc::new(SqlitePersistence::new(c).await?)),
+    }
 }
