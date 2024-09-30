@@ -7,5 +7,5 @@ CREATE TABLE "block_records" (
     "parent_hash" TEXT NULL,
     "transaction_hashes" TEXT NOT NULL,
     "rolled_back" TINYINT NOT NULL,
-    FOREIGN KEY ("listener_id") REFERENCES "listeners" ("id")
+    FOREIGN KEY ("listener_id") REFERENCES "listeners" ("id") ON DELETE CASCADE
 )
