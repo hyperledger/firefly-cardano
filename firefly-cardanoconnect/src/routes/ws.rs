@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{error, instrument, warn};
+use tracing::{error, instrument, warn, Level};
 
 use crate::AppState;
 
@@ -110,7 +110,7 @@ enum IncomingMessage {
     Error(ErrorMessage),
 }
 
-#[instrument(err(Debug), skip(socket))]
+#[instrument(err(Debug, level = Level::WARN), skip(socket))]
 async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>> {
     loop {
         let Some(message) = socket.recv().await else {
@@ -164,7 +164,7 @@ pub async fn handle_socket_upgrade(
 ) -> Response {
     ws.on_upgrade(|socket| async move {
         if let Err(error) = handle_socket(app_state, socket).await {
-            error!("socket error: {:?}", error);
+            warn!("socket error: {:?}", error);
         }
     })
 }
