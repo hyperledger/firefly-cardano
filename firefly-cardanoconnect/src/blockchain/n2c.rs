@@ -243,6 +243,7 @@ impl N2cChainSync {
             block_slot: Some(block_slot),
             block_hash,
             parent_hash,
+            cbor: content.0,
             transaction_hashes,
         })
     }

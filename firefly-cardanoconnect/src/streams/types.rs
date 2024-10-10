@@ -101,6 +101,7 @@ pub struct BlockInfo {
     pub block_slot: Option<u64>,
     pub block_hash: String,
     pub parent_hash: Option<String>,
+    pub cbor: Vec<u8>,
     pub transaction_hashes: Vec<String>,
 }
 impl BlockInfo {
