@@ -8,6 +8,7 @@ use anyhow::Result;
 use blockchain::BlockchainClient;
 use clap::Parser;
 use config::{load_config, CardanoConnectConfig};
+use contracts::ContractManager;
 use firefly_server::instrumentation;
 use routes::{
     chain::get_chain_tip,
@@ -16,7 +17,7 @@ use routes::{
         create_listener, create_stream, delete_listener, delete_stream, get_listener, get_stream,
         list_listeners, list_streams, update_stream,
     },
-    transaction::submit_transaction,
+    transaction::{submit_transaction, try_balius},
     ws::handle_socket_upgrade,
 };
 use signer::CardanoSigner;
@@ -25,6 +26,7 @@ use tracing::instrument;
 
 mod blockchain;
 mod config;
+mod contracts;
 mod persistence;
 mod routes;
 mod signer;
@@ -43,6 +45,7 @@ struct Args {
 #[derive(Clone)]
 struct AppState {
     pub blockchain: Arc<BlockchainClient>,
+    pub contracts: Arc<ContractManager>,
     pub signer: Arc<CardanoSigner>,
     pub stream_manager: Arc<StreamManager>,
 }
@@ -55,11 +58,17 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
     } else {
         Arc::new(BlockchainClient::new(config).await?)
     };
+    let contracts = if let Some(contracts) = &config.contracts {
+        Arc::new(ContractManager::new(contracts).await?)
+    } else {
+        Arc::new(ContractManager::none())
+    };
 
     let state = AppState {
         blockchain: blockchain.clone(),
+        contracts: contracts.clone(),
         signer: Arc::new(CardanoSigner::new(config)?),
-        stream_manager: Arc::new(StreamManager::new(persistence, blockchain).await?),
+        stream_manager: Arc::new(StreamManager::new(persistence, blockchain, contracts).await?),
     };
 
     Ok(state)
@@ -78,6 +87,7 @@ async fn main() -> Result<()> {
     let router = ApiRouter::new()
         .api_route("/health", get(health))
         .api_route("/transactions", post(submit_transaction))
+        .api_route("/transactions/balius", post(try_balius))
         .api_route("/eventstreams", post(create_stream).get(list_streams))
         .api_route(
             "/eventstreams/:streamId",

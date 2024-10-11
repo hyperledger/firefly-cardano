@@ -17,6 +17,7 @@ use tracing::warn;
 
 use crate::{
     blockchain::BlockchainClient,
+    contracts::{ContractManager, RuntimeWrapper},
     persistence::Persistence,
     streams::{blockchain::ListenerEvent, EventData, EventId},
 };
@@ -33,12 +34,14 @@ pub struct Multiplexer {
     stream_ids_by_topic: Arc<DashMap<String, StreamId>>,
     persistence: Arc<dyn Persistence>,
     data_source: Arc<DataSource>,
+    contracts: Arc<ContractManager>,
 }
 
 impl Multiplexer {
     pub async fn new(
         persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
+        contracts: Arc<ContractManager>,
     ) -> Result<Self> {
         let data_source = Arc::new(DataSource::new(blockchain, persistence.clone()));
 
@@ -48,8 +51,13 @@ impl Multiplexer {
             let topic = stream.name.clone();
             stream_ids_by_topic.insert(topic.clone(), stream.id.clone());
 
-            let dispatcher =
-                StreamDispatcher::new(&stream, persistence.clone(), data_source.clone()).await?;
+            let dispatcher = StreamDispatcher::new(
+                &stream,
+                persistence.clone(),
+                data_source.clone(),
+                contracts.clone(),
+            )
+            .await?;
             dispatchers.insert(stream.id, dispatcher);
         }
         Ok(Self {
@@ -57,6 +65,7 @@ impl Multiplexer {
             stream_ids_by_topic: Arc::new(stream_ids_by_topic),
             persistence,
             data_source,
+            contracts,
         })
     }
 
@@ -74,6 +83,7 @@ impl Multiplexer {
                         stream,
                         self.persistence.clone(),
                         self.data_source.clone(),
+                        self.contracts.clone(),
                     )
                     .await?,
                 );
@@ -140,6 +150,7 @@ impl StreamDispatcher {
         stream: &Stream,
         persistence: Arc<dyn Persistence>,
         data_source: Arc<DataSource>,
+        contracts: Arc<ContractManager>,
     ) -> Result<Self> {
         let (state_change_sink, state_change_source) = mpsc::channel(16);
 
@@ -176,6 +187,7 @@ impl StreamDispatcher {
                 batch_number: 0,
                 listeners,
                 hwms,
+                runtime: contracts.connect().await?,
                 persistence,
             };
             worker.run(state_change_source).await;
@@ -240,6 +252,8 @@ struct StreamDispatcherWorker {
     batch_number: u64,
     listeners: BTreeMap<ListenerId, ListenerState>,
     hwms: BTreeMap<ListenerId, EventReference>,
+    #[expect(unused)]
+    runtime: RuntimeWrapper,
     persistence: Arc<dyn Persistence>,
 }
 
@@ -344,6 +358,7 @@ impl StreamDispatcherWorker {
             !self.listeners.is_empty(),
             "no listeners to produce events!"
         );
+        // TODO: gotta pull events from the balius runtime
         loop {
             // find the next event to process
             let mut sync_events = vec![];
