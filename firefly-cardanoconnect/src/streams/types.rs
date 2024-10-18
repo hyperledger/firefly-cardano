@@ -119,6 +119,7 @@ pub struct BlockRecord {
 #[derive(Clone, Debug)]
 pub struct EventId {
     pub listener_id: ListenerId,
+    pub signature: String,
     pub block_hash: String,
     pub block_number: Option<u64>,
     pub transaction_hash: String,
@@ -128,30 +129,17 @@ pub struct EventId {
 }
 
 #[derive(Clone, Debug)]
-pub enum EventData {
-    TransactionAccepted,
-    TransactionRolledBack,
-}
-
-#[derive(Clone, Debug)]
 pub struct Event {
     pub id: EventId,
-    pub data: EventData,
+    pub data: serde_json::Value,
 }
 impl Event {
-    pub fn signature(&self) -> String {
-        match self.data {
-            EventData::TransactionAccepted => "TransactionAccepted(string,string,string)".into(),
-            EventData::TransactionRolledBack => {
-                "TransactionRolledBack(string,string,string)".into()
-            }
+    pub fn into_rollback(mut self) -> Self {
+        if self.id.signature == "TransactionAccepted(string,string,string)" {
+            self.id.signature = "TransactionRolledBack(string,string,string)".into();
+        } else if self.id.signature == "TransactionRolledBack(string,string,string)" {
+            self.id.signature = "TransactionAccepted(string,string,string)".into();
         }
-    }
-    pub fn into_rollback(self) -> Self {
-        let data = match self.data {
-            EventData::TransactionAccepted => EventData::TransactionRolledBack,
-            EventData::TransactionRolledBack => EventData::TransactionAccepted,
-        };
-        Self { id: self.id, data }
+        self
     }
 }

@@ -6,8 +6,6 @@ use serde::Deserialize;
 use serde_json::json;
 use tokio::{fs, sync::RwLock};
 
-use crate::streams::EventData;
-
 #[derive(Debug, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct ContractsConfig {
@@ -79,7 +77,7 @@ pub struct RuntimeWrapper {
 }
 impl RuntimeWrapper {
     #[expect(unused)]
-    pub async fn collect_events(&mut self, contract: &str) -> Result<Vec<EventData>> {
+    pub async fn collect_events(&mut self, contract: &str) -> Result<Vec<String>> {
         let _events = self
             .runtime
             .handle_request(contract, "_collect_events", json!({}))

@@ -8,6 +8,7 @@ use std::{
 use anyhow::{bail, Context, Result};
 use dashmap::{DashMap, Entry};
 use firefly_server::apitypes::ToAnyhow;
+use serde_json::json;
 use tokio::{
     select,
     sync::{mpsc, oneshot},
@@ -19,7 +20,7 @@ use crate::{
     blockchain::BlockchainClient,
     contracts::{ContractManager, RuntimeWrapper},
     persistence::Persistence,
-    streams::{blockchain::ListenerEvent, EventData, EventId},
+    streams::{blockchain::ListenerEvent, EventId},
 };
 
 use super::{
@@ -545,6 +546,7 @@ impl StreamDispatcherWorker {
                 if Self::matches_filter(tx_hash, filter) {
                     let id = EventId {
                         listener_id: listener.id.clone(),
+                        signature: "TransactionAccepted(string,string,string)".into(),
                         block_hash: block.block_hash.clone(),
                         block_number: block.block_height,
                         transaction_hash: tx_hash.clone(),
@@ -554,7 +556,7 @@ impl StreamDispatcherWorker {
                     };
                     events.push(Event {
                         id,
-                        data: EventData::TransactionAccepted,
+                        data: json!({}),
                     })
                 }
             }

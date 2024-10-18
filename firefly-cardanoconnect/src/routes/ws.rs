@@ -36,14 +36,14 @@ async fn handle_socket(
                 .iter()
                 .map(|e| Event {
                     listener_id: Some(e.id.listener_id.clone().into()),
-                    signature: e.signature(),
+                    signature: e.id.signature.clone(),
                     block_number: e.id.block_number,
                     block_hash: e.id.block_hash.clone(),
                     transaction_hash: e.id.transaction_hash.clone(),
                     transaction_index: e.id.transaction_index,
                     log_index: e.id.log_index,
                     timestamp: e.id.timestamp.map(systemtime_to_rfc3339),
-                    data: serde_json::Value::Object(serde_json::Map::new()),
+                    data: e.data.clone(),
                 })
                 .collect(),
         };
