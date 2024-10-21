@@ -1,1 +1,6 @@
+.direnv
+result*
 /target
+
+# Auto generated on devshell load
+treefmt.toml
