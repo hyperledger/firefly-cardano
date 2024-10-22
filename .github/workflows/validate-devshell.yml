@@ -1,0 +1,17 @@
+on:
+  push:
+
+jobs:
+  validate-devshell:
+    strategy:
+      matrix:
+        system: ["x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin"]
+    runs-on: ubuntu-latest
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4.2.1
+    - name: 🧰 Setup Nix
+      uses: nixbuild/nix-quick-install-action@v28
+    - name: 🚀 Eval
+      run: nix eval .#devShells.${{matrix.system}}.default --apply toString
+

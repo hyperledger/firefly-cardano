@@ -1,0 +1,15 @@
+[formatter]
+[formatter.alejandra]
+command = "alejandra"
+excludes = []
+includes = ["*.nix"]
+options = []
+
+[formatter.rustfmt]
+command = "rustfmt"
+excludes = []
+includes = ["*.rs"]
+options = ["--edition", "2021", "--config", "skip_children=true"]
+
+[global]
+excludes = ["*.lock", "*.patch", ".gitignore", ".gitmodules"]
