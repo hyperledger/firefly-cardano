@@ -9,9 +9,6 @@
 
     flake-parts.url = "github:hercules-ci/flake-parts";
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
-
-    treefmt-nix.url = "github:numtide/treefmt-nix";
-    treefmt-nix.inputs.nixpkgs.follows = "";
   };
 
   outputs = {...} @ inputs:
@@ -19,7 +16,6 @@
       systems = ["x86_64-linux" "aarch64-linux" "x86_64-darwin" "aarch64-darwin"];
       imports = with inputs; [
         devshell.flakeModule
-        treefmt-nix.flakeModule
       ];
 
       perSystem = {
@@ -29,11 +25,6 @@
         config,
         ...
       }: {
-        treefmt.programs = {
-          alejandra.enable = true;
-          rustfmt.enable = true;
-        };
-
         devshells.default = {
           name = "firefly-cardano";
           imports = [
@@ -41,16 +32,16 @@
           ];
 
           packages = with pkgs; [
-            just
+            alejandra
           ];
 
           commands = [
-            {package = config.treefmt.package;}
+            {package = pkgs.treefmt;}
+            {package = pkgs.just;}
           ];
 
           devshell.startup.setup.text = ''
             [ -e $PRJ_ROOT/.envrc.local ] && source $PRJ_ROOT/.envrc.local
-            cp -f ${config.treefmt.build.configFile} $PRJ_ROOT/treefmt.toml
           '';
         };
       };
