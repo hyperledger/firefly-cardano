@@ -16,7 +16,7 @@ schemars = "0.8"
 serde = "1"
 serde_json = "1"
 tokio = "1"
-tower-http = { version = "0.5", features = ["trace"] }
+tower-http = { version = "0.6", features = ["trace"] }
 tracing = "0.1"
 tracing-subscriber = "0.3"
-utoipa-swagger-ui = { version = "7", features = ["axum"] }
+utoipa-swagger-ui = { version = "8", features = ["axum"] }
