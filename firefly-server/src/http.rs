@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::Result;
 use duration_str::deserialize_option_duration;
 use reqwest::{Client, IntoUrl};
-use serde::{Deserialize, Serialize};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 
 use crate::apitypes::{ApiError, ApiResult};
 
@@ -36,14 +36,22 @@ impl HttpClient {
         Req: Serialize,
         Res: for<'a> Deserialize<'a>,
     {
-        Ok(self
-            .0
-            .post(url)
-            .json(req)
-            .send()
-            .await
-            .map_err(ApiError::from_reqwest)?
-            .json()
-            .await?)
+        self.0.post(url).json(req).send().await.parse().await
+    }
+}
+
+trait HttpResponseExt: Sized {
+    async fn parse<T: DeserializeOwned>(self) -> ApiResult<T>;
+}
+
+impl HttpResponseExt for std::result::Result<reqwest::Response, reqwest::Error> {
+    async fn parse<T: DeserializeOwned>(self) -> ApiResult<T> {
+        let res = self.map_err(ApiError::from_reqwest)?;
+        let status = res.status();
+        if !status.is_success() {
+            let message = res.text().await.unwrap_or(status.to_string());
+            return Err(ApiError::new(status, message));
+        }
+        Ok(res.json().await?)
     }
 }
