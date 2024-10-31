@@ -1,6 +1,8 @@
+use std::time::Duration;
+
 use axum::extract::{Path, Query};
 use axum::{extract::State, Json};
-use firefly_server::apitypes::{ApiDuration, ApiError, ApiResult, NoContent};
+use firefly_server::apitypes::{ApiError, ApiResult, NoContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -15,6 +17,14 @@ fn example_opt_batch_size() -> Option<usize> {
     Some(example_batch_size())
 }
 
+fn example_batch_timeout_ms() -> u64 {
+    500
+}
+
+fn example_opt_batch_timeout_ms() -> Option<u64> {
+    Some(example_batch_timeout_ms())
+}
+
 fn example_from_block() -> Option<String> {
     Some("earliest".into())
 }
@@ -25,7 +35,8 @@ pub struct CreateStreamRequest {
     pub name: String,
     #[schemars(example = "example_batch_size")]
     pub batch_size: usize,
-    pub batch_timeout: ApiDuration,
+    #[schemars(example = "example_batch_timeout_ms")]
+    pub batch_timeout_ms: u64,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -39,7 +50,8 @@ pub struct StreamPathParameters {
 pub struct UpdateStreamRequest {
     #[schemars(example = "example_opt_batch_size")]
     pub batch_size: Option<usize>,
-    pub batch_timeout: Option<ApiDuration>,
+    #[schemars(example = "example_opt_batch_timeout_ms")]
+    pub batch_timeout_ms: Option<u64>,
 }
 
 #[derive(Serialize, JsonSchema)]
@@ -49,7 +61,8 @@ pub struct EventStream {
     pub name: String,
     #[schemars(example = "example_batch_size")]
     pub batch_size: usize,
-    pub batch_timeout: ApiDuration,
+    #[schemars(example = "example_batch_timeout_ms")]
+    pub batch_timeout_ms: u64,
 }
 impl From<Stream> for EventStream {
     fn from(value: Stream) -> Self {
@@ -57,7 +70,7 @@ impl From<Stream> for EventStream {
             id: value.id.into(),
             name: value.name,
             batch_size: value.batch_size,
-            batch_timeout: value.batch_timeout.into(),
+            batch_timeout_ms: value.batch_timeout.as_millis() as u64,
         }
     }
 }
@@ -111,7 +124,11 @@ pub async fn create_stream(
     Json(req): Json<CreateStreamRequest>,
 ) -> ApiResult<Json<EventStream>> {
     let stream = stream_manager
-        .create_stream(&req.name, req.batch_size, req.batch_timeout.into())
+        .create_stream(
+            &req.name,
+            req.batch_size,
+            Duration::from_millis(req.batch_timeout_ms),
+        )
         .await?;
     Ok(Json(stream.into()))
 }
@@ -151,7 +168,7 @@ pub async fn update_stream(
 ) -> ApiResult<Json<EventStream>> {
     let id = stream_id.into();
     let batch_size = req.batch_size;
-    let batch_timeout = req.batch_timeout.map(|d| d.into());
+    let batch_timeout = req.batch_timeout_ms.map(Duration::from_millis);
     let stream = stream_manager
         .update_stream(&id, batch_size, batch_timeout)
         .await?;
