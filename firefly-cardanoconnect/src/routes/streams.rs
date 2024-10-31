@@ -35,6 +35,7 @@ pub struct CreateStreamRequest {
     pub name: String,
     #[schemars(example = "example_batch_size")]
     pub batch_size: usize,
+    #[serde(rename = "batchTimeoutMS")]
     #[schemars(example = "example_batch_timeout_ms")]
     pub batch_timeout_ms: u64,
 }
@@ -50,6 +51,7 @@ pub struct StreamPathParameters {
 pub struct UpdateStreamRequest {
     #[schemars(example = "example_opt_batch_size")]
     pub batch_size: Option<usize>,
+    #[serde(rename = "batchTimeoutMS")]
     #[schemars(example = "example_opt_batch_timeout_ms")]
     pub batch_timeout_ms: Option<u64>,
 }
@@ -61,6 +63,7 @@ pub struct EventStream {
     pub name: String,
     #[schemars(example = "example_batch_size")]
     pub batch_size: usize,
+    #[serde(rename = "batchTimeoutMS")]
     #[schemars(example = "example_batch_timeout_ms")]
     pub batch_timeout_ms: u64,
 }
