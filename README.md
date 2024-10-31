@@ -33,3 +33,12 @@ Should you prefer to load the devshell automatically when in a terminal
   direnv allow
   ```
 
+## Architecture
+
+![](./arch.svg)
+
+## Config
+
+For the firefly connector config, see [config.md](firefly-cardanoconnect/config.md).
+
+For the firefly signer config, see [config.md](firefly-cardanosigner/config.md).
