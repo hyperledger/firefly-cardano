@@ -58,8 +58,8 @@ async fn main() -> Result<()> {
     let state = init_state(&config).await?;
 
     let router = ApiRouter::new()
-        .api_route("/api/health", get(health))
-        .api_route("/api/sign", post(sign_transaction))
+        .api_route("/health", get(health))
+        .api_route("/sign", post(sign_transaction))
         .with_state(state);
     firefly_server::server::serve(&config.api, router).await
 }

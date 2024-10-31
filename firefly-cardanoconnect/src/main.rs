@@ -77,23 +77,23 @@ async fn main() -> Result<()> {
     let state = init_state(&config, args.mock_data).await?;
 
     let router = ApiRouter::new()
-        .api_route("/api/health", get(health))
-        .api_route("/api/transactions", post(submit_transaction))
-        .api_route("/api/eventstreams", post(create_stream).get(list_streams))
+        .api_route("/health", get(health))
+        .api_route("/transactions", post(submit_transaction))
+        .api_route("/eventstreams", post(create_stream).get(list_streams))
         .api_route(
-            "/api/eventstreams/:streamId",
+            "/eventstreams/:streamId",
             get(get_stream).patch(update_stream).delete(delete_stream),
         )
         .api_route(
-            "/api/eventstreams/:streamId/listeners",
+            "/eventstreams/:streamId/listeners",
             post(create_listener).get(list_listeners),
         )
         .api_route(
-            "/api/eventstreams/:streamId/listeners/:listenerId",
+            "/eventstreams/:streamId/listeners/:listenerId",
             get(get_listener).delete(delete_listener),
         )
-        .api_route("/api/chain/tip", get(get_chain_tip))
-        .route("/api/ws", axum::routing::get(handle_socket_upgrade))
+        .api_route("/chain/tip", get(get_chain_tip))
+        .route("/ws", axum::routing::get(handle_socket_upgrade))
         .with_state(state);
 
     firefly_server::server::serve(&config.api, router).await

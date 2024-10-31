@@ -18,7 +18,7 @@ impl CardanoSigner {
     pub fn new(config: &CardanoConnectConfig) -> Result<Self> {
         let client = HttpClient::new(&config.http)?;
         let base_url = Url::parse(&config.connector.signer_url)?;
-        let sign_url = base_url.join("/api/sign")?;
+        let sign_url = base_url.join("/sign")?;
         Ok(Self { client, sign_url })
     }
 
