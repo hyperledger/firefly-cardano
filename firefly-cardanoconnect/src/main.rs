@@ -12,12 +12,13 @@ use contracts::ContractManager;
 use firefly_server::instrumentation;
 use routes::{
     chain::get_chain_tip,
+    contracts::invoke_contract,
     health::health,
     streams::{
         create_listener, create_stream, delete_listener, delete_stream, get_listener, get_stream,
         list_listeners, list_streams, update_stream,
     },
-    transaction::{submit_transaction, try_balius},
+    transaction::submit_transaction,
     ws::handle_socket_upgrade,
 };
 use signer::CardanoSigner;
@@ -86,8 +87,8 @@ async fn main() -> Result<()> {
 
     let router = ApiRouter::new()
         .api_route("/health", get(health))
+        .api_route("/contracts/invoke", post(invoke_contract))
         .api_route("/transactions", post(submit_transaction))
-        .api_route("/transactions/balius", post(try_balius))
         .api_route("/eventstreams", post(create_stream).get(list_streams))
         .api_route(
             "/eventstreams/:streamId",

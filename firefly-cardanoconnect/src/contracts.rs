@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use anyhow::{bail, Result};
 use balius_runtime::{Runtime, Store};
 use serde::Deserialize;
-use serde_json::json;
+use serde_json::{json, Value};
 use tokio::{fs, sync::RwLock};
 
 #[derive(Debug, Deserialize, Clone)]
@@ -36,15 +36,15 @@ impl ContractManager {
         }
     }
 
-    pub async fn invoke(&self, contract: &str, method: &str) -> Result<()> {
+    pub async fn invoke(&self, contract: &str, method: &str, params: Value) -> Result<Value> {
         let Some(rt_lock) = &self.runtime else {
             bail!("Contract manager not configured");
         };
 
         let runtime = rt_lock.read().await;
-        runtime.handle_request(contract, method, json!({})).await?;
+        let result = runtime.handle_request(contract, method, params).await?;
 
-        Ok(())
+        Ok(result)
     }
 
     pub async fn connect(&self) -> Result<RuntimeWrapper> {

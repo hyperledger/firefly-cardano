@@ -21,17 +21,6 @@ pub struct SubmitTransactionResponse {
     txid: String,
 }
 
-#[derive(Deserialize, JsonSchema)]
-pub struct TryBaliusRequest {
-    /// The name of the contract to invoke
-    contract: String,
-    /// The method of the contract to invoke
-    method: String,
-}
-
-#[derive(Serialize, JsonSchema)]
-pub struct TryBaliusResponse {}
-
 pub async fn submit_transaction(
     State(AppState {
         blockchain, signer, ..
@@ -48,12 +37,4 @@ pub async fn submit_transaction(
         .await
         .context("could not submit transaction")?;
     Ok(Json(SubmitTransactionResponse { txid }))
-}
-
-pub async fn try_balius(
-    State(AppState { contracts, .. }): State<AppState>,
-    Json(req): Json<TryBaliusRequest>,
-) -> ApiResult<Json<TryBaliusResponse>> {
-    contracts.invoke(&req.contract, &req.method).await?;
-    Ok(Json(TryBaliusResponse {}))
 }
