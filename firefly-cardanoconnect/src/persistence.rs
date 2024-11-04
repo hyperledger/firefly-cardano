@@ -7,7 +7,10 @@ use mocks::MockPersistence;
 use serde::Deserialize;
 use sqlite::{SqliteConfig, SqlitePersistence};
 
-use crate::streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId};
+use crate::{
+    operations::{Operation, OperationId},
+    streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId},
+};
 
 mod mocks;
 mod sqlite;
@@ -58,6 +61,9 @@ pub trait Persistence: Sync + Send {
         listener: &ListenerId,
         new_records: Vec<BlockRecord>,
     ) -> Result<()>;
+
+    async fn write_operation(&self, op: &Operation) -> ApiResult<()>;
+    async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>>;
 }
 
 pub async fn init(config: &PersistenceConfig) -> Result<Arc<dyn Persistence>> {

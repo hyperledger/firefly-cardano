@@ -1,14 +1,15 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use rusqlite::{params, types::FromSql, Row, ToSql};
 use serde::Deserialize;
 use tokio_rusqlite::Connection;
 
-use crate::streams::{
-    BlockInfo, BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId,
+use crate::{
+    operations::{Operation, OperationId, OperationStatus},
+    streams::{BlockInfo, BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId},
 };
 
 use super::Persistence;
@@ -306,6 +307,51 @@ impl Persistence for SqlitePersistence {
             Ok(())
         }).await
     }
+
+    async fn write_operation(&self, op: &Operation) -> ApiResult<()> {
+        let op = op.clone();
+        self.conn
+            .call_unwrap(move |c| {
+                let status = op.status.name();
+                let error_message = op.status.error_message();
+                c.prepare_cached(
+                    "INSERT INTO operations (id, status, error_message, tx_id)
+                    VALUES (?1, ?2, ?3, ?4)
+                    ON CONFLICT(id) DO UPDATE SET
+                        status=excluded.status,
+                        error_message=excluded.error_message,
+                        tx_id=excluded.tx_id",
+                )?
+                .execute(params![
+                    op.id.to_string(),
+                    status,
+                    error_message,
+                    op.tx_id,
+                ])?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>> {
+        let id = id.clone();
+        self.conn
+            .call_unwrap(move |c| {
+                let Some(op) = c
+                    .prepare_cached(
+                        "SELECT id, status, error_message, tx_id
+                        FROM operations
+                        WHERE id = ?1",
+                    )?
+                    .query_and_then([id.to_string()], parse_operation)?
+                    .next()
+                else {
+                    return Ok(None);
+                };
+                Ok(Some(op?))
+            })
+            .await
+    }
 }
 
 fn parse_stream(row: &Row) -> Result<Stream> {
@@ -363,6 +409,26 @@ fn parse_block_record(row: &Row) -> Result<BlockRecord> {
             transaction_hashes: serde_json::from_str(&transaction_hashes)?,
         },
         rolled_back,
+    })
+}
+
+fn parse_operation(row: &Row) -> Result<Operation> {
+    let id: String = row.get("id")?;
+    let error_message: Option<String> = row.get("error_message")?;
+    let status = match error_message {
+        Some(error) => OperationStatus::Failed(error),
+        None => match row.get::<&str, String>("status")?.as_str() {
+            "Succeeded" => OperationStatus::Succeeded,
+            "Pending" => OperationStatus::Pending,
+            "Failed" => OperationStatus::Failed("".into()),
+            other => bail!("unrecognized status {other}"),
+        },
+    };
+    let tx_id: Option<String> = row.get("tx_id")?;
+    Ok(Operation {
+        id: id.into(),
+        status,
+        tx_id,
     })
 }
 

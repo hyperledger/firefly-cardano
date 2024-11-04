@@ -6,7 +6,10 @@ use dashmap::DashMap;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use tokio::sync::Mutex;
 
-use crate::streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId};
+use crate::{
+    operations::{Operation, OperationId},
+    streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId},
+};
 
 use super::Persistence;
 
@@ -16,6 +19,7 @@ pub struct MockPersistence {
     all_listeners: DashMap<StreamId, Vec<Listener>>,
     all_checkpoints: DashMap<StreamId, StreamCheckpoint>,
     all_blocks: DashMap<ListenerId, HashMap<String, BlockRecord>>,
+    all_operations: DashMap<OperationId, Operation>,
 }
 
 #[async_trait]
@@ -163,5 +167,15 @@ impl Persistence for MockPersistence {
             records.insert(record.block.block_hash.clone(), record);
         }
         Ok(())
+    }
+
+    async fn write_operation(&self, op: &Operation) -> ApiResult<()> {
+        self.all_operations.insert(op.id.clone(), op.clone());
+        Ok(())
+    }
+
+    async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>> {
+        let operation = self.all_operations.get(id).map(|op| op.clone());
+        Ok(operation)
     }
 }
