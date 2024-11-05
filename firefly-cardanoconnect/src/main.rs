@@ -35,7 +35,7 @@ mod utils;
 #[command(version, about, long_about = None)]
 struct Args {
     #[clap(short = 'f', long)]
-    pub config_file: Option<PathBuf>,
+    pub config_file: Vec<PathBuf>,
     #[clap(long)]
     pub mock_data: bool,
 }
@@ -69,8 +69,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let config_file = args.config_file.as_deref();
-    let config = load_config(config_file)?;
+    let config = load_config(args.config_file)?;
 
     instrumentation::init(&config.log)?;
 

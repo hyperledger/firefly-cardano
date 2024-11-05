@@ -25,7 +25,7 @@ async fn health() -> impl IntoApiResponse {
 #[command(version, about, long_about = None)]
 struct Args {
     #[clap(short = 'f', long)]
-    pub config_file: Option<PathBuf>,
+    pub config_file: Vec<PathBuf>,
 }
 
 #[derive(Clone)]
@@ -50,8 +50,7 @@ async fn init_state(config: &FireflySignerConfig) -> Result<AppState> {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let config_file = args.config_file.as_deref();
-    let config = load_config(config_file)?;
+    let config = load_config(args.config_file)?;
 
     instrumentation::init(&config.log)?;
 

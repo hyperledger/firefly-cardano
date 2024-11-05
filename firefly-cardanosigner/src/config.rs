@@ -1,4 +1,4 @@
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use anyhow::Result;
 use firefly_server::{config, instrumentation::LogConfig, server::ApiConfig};
@@ -18,10 +18,10 @@ pub struct FileWalletConfig {
     pub path: PathBuf,
 }
 
-pub fn load_config(config_file: Option<&Path>) -> Result<FireflySignerConfig> {
+pub fn load_config(config_files: Vec<PathBuf>) -> Result<FireflySignerConfig> {
     config::load_config(
         "cardanosigner",
         include_str!("../config.base.yaml"),
-        config_file,
+        config_files,
     )
 }

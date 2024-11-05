@@ -1,4 +1,4 @@
-use std::{fmt::Debug, path::Path};
+use std::{fmt::Debug, path::PathBuf};
 
 use anyhow::Result;
 use firefly_server::{
@@ -36,10 +36,10 @@ impl<T> Debug for Secret<T> {
     }
 }
 
-pub fn load_config(config_file: Option<&Path>) -> Result<CardanoConnectConfig> {
+pub fn load_config(config_files: Vec<PathBuf>) -> Result<CardanoConnectConfig> {
     config::load_config(
         "cardanoconnect",
         include_str!("../config.base.yaml"),
-        config_file,
+        config_files,
     )
 }

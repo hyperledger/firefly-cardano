@@ -1,4 +1,4 @@
-use std::path::Path;
+use std::path::PathBuf;
 
 use anyhow::Result;
 use figment::{
@@ -7,7 +7,7 @@ use figment::{
 };
 use serde::Deserialize;
 
-pub fn load_config<T>(suffix: &str, defaults: &str, config_file: Option<&Path>) -> Result<T>
+pub fn load_config<T>(suffix: &str, defaults: &str, config_files: Vec<PathBuf>) -> Result<T>
 where
     T: for<'a> Deserialize<'a>,
 {
@@ -28,7 +28,7 @@ where
         }
     }
 
-    if let Some(file) = config_file {
+    for file in config_files {
         config = config.merge(Yaml::file_exact(file));
     }
 
