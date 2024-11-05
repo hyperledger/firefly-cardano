@@ -32,7 +32,14 @@ where
         config = config.merge(Yaml::file_exact(file));
     }
 
-    config = config.merge(Env::prefixed("FIREFLY_"));
+    for depth in 0..7 {
+        // We want to map env vars like "FIREFLY_CONNECTOR_BLOCKCHAIN_BLOCKFROST_KEY" to paths like "connector.blockchain.blockfrost_key".
+        // We can't tell which underscores should be dots and which should stay underscores, so just guess.
+        // If we get it wrong, the caller can always pass "FIREFLY_CONNECTOR.BLOCKCHAIN.BLOCKFROST_KEY" explicitly.
+        let provider =
+            Env::prefixed("FIREFLY_").map(move |env| env.as_str().replacen("_", ".", depth).into());
+        config = config.merge(provider);
+    }
     Ok(config.extract()?)
 }
 
