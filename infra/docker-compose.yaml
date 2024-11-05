@@ -1,0 +1,60 @@
+services:
+  init-node:
+    image: ghcr.io/input-output-hk/mithril-client:2442.0-0d4d6bc
+    entrypoint: /app/bin/entrypoint.sh
+    user: root
+    environment:
+      NETWORK: preview
+      UNPACK_DIR: /data
+    volumes:
+    - ./mithril-entrypoint.sh:/app/bin/entrypoint.sh
+    - node-db:/data
+
+  cardano-node:
+    image: ghcr.io/intersectmbo/cardano-node:10.1.2
+    environment:
+      NETWORK: preview
+    volumes:
+      - node-db:/data
+      - node-ipc:/ipc/
+    healthcheck:
+      test: "ls /ipc/node.socket"
+      interval: 3s
+      retries: 0
+    depends_on:
+      init-node:
+        condition: service_completed_successfully
+
+  firefly-cardanoconnect:
+    build:
+      context: ..
+      target: firefly-cardanoconnect
+    command: ./firefly-cardanoconnect --config-file ./config.yaml
+    ports:
+      - 5018:5018
+    volumes:
+      - node-ipc:/ipc
+      - connect-db:/db
+      - ./connect.yaml:/app/config.yaml
+    depends_on:
+      cardano-node:
+        condition: service_healthy
+
+  firefly-cardanosigner:
+    build:
+      context: ..
+      target: firefly-cardanosigner
+    command: ./firefly-cardanosigner --config-file ./config.yaml
+    ports:
+      - 8555:8555
+    volumes:
+      - ./wallet:/wallet
+      - ./signer.yaml:/app/config.yaml
+
+volumes:
+  connect-db:
+  node-db:
+  node-ipc:
+    driver: local
+    driver_opts:
+      type: tmpfs
