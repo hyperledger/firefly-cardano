@@ -25,7 +25,6 @@ case "$NETWORK" in
 esac
 export MITHRIL_NETWORK
 
-export AGGREGATOR_ENDPOINT="https://aggregator.release-mainnet.api.mithril.network/aggregator"
 export AGGREGATOR_ENDPOINT="https://aggregator.${MITHRIL_NETWORK}.api.mithril.network/aggregator"
 
 # ---------------------------------------------------------------------------- #
