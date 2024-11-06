@@ -69,7 +69,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
     };
     let operations = Arc::new(OperationsManager::new(
         blockchain.clone(),
-        contracts.clone(),
+        contracts,
         persistence.clone(),
         signer.clone(),
     ));
@@ -78,7 +78,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
         blockchain: blockchain.clone(),
         operations,
         signer,
-        stream_manager: Arc::new(StreamManager::new(persistence, blockchain, contracts).await?),
+        stream_manager: Arc::new(StreamManager::new(persistence, blockchain).await?),
     };
 
     Ok(state)

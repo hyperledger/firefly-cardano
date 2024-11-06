@@ -16,7 +16,6 @@ pub struct ContractsConfig {
 
 pub struct ContractManager {
     runtime: Option<RwLock<Runtime>>,
-    config: Option<ContractsConfig>,
 }
 
 impl ContractManager {
@@ -25,15 +24,11 @@ impl ContractManager {
         let runtime = Self::new_runtime(config).await?;
         Ok(Self {
             runtime: Some(RwLock::new(runtime)),
-            config: Some(config.clone()),
         })
     }
 
     pub fn none() -> Self {
-        Self {
-            runtime: None,
-            config: None,
-        }
+        Self { runtime: None }
     }
 
     pub async fn invoke(&self, contract: &str, method: &str, params: Value) -> Result<Value> {
@@ -45,14 +40,6 @@ impl ContractManager {
         let result = runtime.handle_request(contract, method, params).await?;
 
         Ok(result)
-    }
-
-    pub async fn connect(&self) -> Result<RuntimeWrapper> {
-        let Some(config) = &self.config else {
-            bail!("Contract manager not configured");
-        };
-        let runtime = Self::new_runtime(config).await?;
-        Ok(RuntimeWrapper { runtime })
     }
 
     async fn new_runtime(config: &ContractsConfig) -> Result<Runtime> {
@@ -69,19 +56,5 @@ impl ContractManager {
             runtime.register_worker(id, wasm_path, json!({})).await?;
         }
         Ok(runtime)
-    }
-}
-
-pub struct RuntimeWrapper {
-    runtime: Runtime,
-}
-impl RuntimeWrapper {
-    #[expect(unused)]
-    pub async fn collect_events(&mut self, contract: &str) -> Result<Vec<String>> {
-        let _events = self
-            .runtime
-            .handle_request(contract, "_collect_events", json!({}))
-            .await?;
-        Ok(vec![])
     }
 }
