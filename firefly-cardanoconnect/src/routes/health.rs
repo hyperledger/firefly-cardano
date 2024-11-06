@@ -1,6 +1,16 @@
-use aide::axum::IntoApiResponse;
-use axum::Json;
+use axum::{extract::State, Json};
+use reqwest::StatusCode;
+use serde_json::{json, Value};
 
-pub async fn health() -> impl IntoApiResponse {
-    Json("Hello, world!")
+use crate::AppState;
+
+pub async fn health(
+    State(AppState { blockchain, .. }): State<AppState>
+) -> (StatusCode, Json<Value>) {
+    match blockchain.health().await {
+        Ok(()) => (StatusCode::OK, Json(json!({}))),
+        Err(error) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({
+            "blockchain": error.to_string(),
+        }))),
+    }
 }

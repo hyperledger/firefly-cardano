@@ -46,6 +46,9 @@ impl<T> LazyInit<T> {
             value: None,
         }
     }
+    pub fn initialized(&self) -> bool {
+        self.value.is_some()
+    }
     pub async fn get(&mut self) -> &mut T {
         if self.value.is_none() {
             let mut lock = self.factory.lock().await;

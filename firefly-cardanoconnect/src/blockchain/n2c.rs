@@ -48,13 +48,24 @@ impl NodeToClient {
         let client = Self::connect(socket, magic);
         let blockfrost =
             blockfrost_key.map(|key| BlockfrostAPI::new(&key.0, BlockFrostSettings::new()));
-        Self {
+        let mut result = Self {
             socket: socket.to_path_buf(),
             magic,
             genesis_hash: genesis_hash.to_string(),
             genesis_values,
             blockfrost,
             client,
+        };
+        if let Err(error) = result.get_client().await {
+            warn!("cannot connect to blockfrost: {error}");
+        }
+        result
+    }
+
+    pub async fn health(&self) -> Result<()> {
+        match self.client.initialized() {
+            true => Ok(()),
+            false => bail!("not connected to cardano node"),
         }
     }
 

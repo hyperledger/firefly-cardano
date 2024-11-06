@@ -114,6 +114,16 @@ impl BlockchainClient {
         self.genesis_hash.clone()
     }
 
+    pub async fn health(&self) -> Result<()> {
+        match &self.client {
+            ClientImpl::Mock(_) => Ok(()),
+            ClientImpl::NodeToClient(n2c) => {
+                let client = n2c.read().await;
+                client.health().await
+            }
+        }
+    }
+
     pub async fn submit(&self, transaction: Tx) -> Result<String> {
         match &self.client {
             ClientImpl::Mock(_) => bail!("mock transaction submission not implemented"),
