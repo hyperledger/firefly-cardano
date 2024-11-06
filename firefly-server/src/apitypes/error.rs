@@ -56,7 +56,7 @@ impl Display for ApiError {
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let mut fields = self.fields;
-        fields.insert("message".into(), self.message.into());
+        fields.insert("error".into(), self.message.into());
         let value = serde_json::Value::Object(fields);
         (self.status, Json(value)).into_response()
     }
