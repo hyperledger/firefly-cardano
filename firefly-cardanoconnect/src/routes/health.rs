@@ -5,12 +5,15 @@ use serde_json::{json, Value};
 use crate::AppState;
 
 pub async fn health(
-    State(AppState { blockchain, .. }): State<AppState>
+    State(AppState { blockchain, .. }): State<AppState>,
 ) -> (StatusCode, Json<Value>) {
     match blockchain.health().await {
         Ok(()) => (StatusCode::OK, Json(json!({}))),
-        Err(error) => (StatusCode::SERVICE_UNAVAILABLE, Json(json!({
-            "blockchain": error.to_string(),
-        }))),
+        Err(error) => (
+            StatusCode::SERVICE_UNAVAILABLE,
+            Json(json!({
+                "blockchain": error.to_string(),
+            })),
+        ),
     }
 }
