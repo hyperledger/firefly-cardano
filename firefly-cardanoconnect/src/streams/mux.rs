@@ -161,6 +161,7 @@ impl StreamDispatcher {
             .to_anyhow()?;
         let checkpoint = persistence.read_checkpoint(&stream.id).await.to_anyhow()?;
         let old_hwms = checkpoint.map(|cp| cp.listeners).unwrap_or_default();
+        let runtime = contracts.connect().await?;
 
         let stream = stream.clone();
         tokio::spawn(async move {
@@ -188,7 +189,7 @@ impl StreamDispatcher {
                 batch_number: 0,
                 listeners,
                 hwms,
-                runtime: contracts.connect().await?,
+                runtime,
                 persistence,
             };
             worker.run(state_change_source).await;
