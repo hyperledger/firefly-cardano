@@ -91,11 +91,10 @@ impl Multiplexer {
         listener: &Listener,
         from_block: Option<BlockReference>,
     ) -> Result<()> {
-        let sync = self
+        let mut sync = self
             .data_source
-            .listen(listener.id.clone(), from_block.as_ref())
-            .await?;
-        let block = from_block.unwrap_or(sync.get_tip());
+            .listen(listener.id.clone(), from_block.as_ref());
+        let block = from_block.unwrap_or(sync.get_tip().await?);
         let hwm = EventReference {
             block,
             rollback: false,
@@ -142,6 +141,8 @@ impl StreamDispatcher {
         persistence: Arc<dyn Persistence>,
         data_source: Arc<DataSource>,
     ) -> Result<Self> {
+        let (state_change_sink, state_change_source) = mpsc::channel(16);
+
         let all_listeners = persistence
             .list_listeners(&stream.id, None, None)
             .await
@@ -149,36 +150,36 @@ impl StreamDispatcher {
         let checkpoint = persistence.read_checkpoint(&stream.id).await.to_anyhow()?;
         let old_hwms = checkpoint.map(|cp| cp.listeners).unwrap_or_default();
 
-        let mut listeners = BTreeMap::new();
-        let mut hwms = BTreeMap::new();
-        for listener in all_listeners {
-            let hwm = old_hwms.get(&listener.id).cloned().unwrap_or_default();
-            let stream = data_source
-                .listen(listener.id.clone(), Some(&hwm.block))
-                .await?;
+        let stream = stream.clone();
+        tokio::spawn(async move {
+            let mut listeners = BTreeMap::new();
+            let mut hwms = BTreeMap::new();
+            for listener in all_listeners {
+                let hwm = old_hwms.get(&listener.id).cloned().unwrap_or_default();
+                let stream = data_source.listen(listener.id.clone(), Some(&hwm.block));
 
-            hwms.insert(listener.id.clone(), hwm);
-            listeners.insert(
-                listener.id.clone(),
-                ListenerState {
-                    id: listener.id,
-                    sync: stream,
-                    filters: listener.filters,
-                },
-            );
-        }
+                hwms.insert(listener.id.clone(), hwm);
+                listeners.insert(
+                    listener.id.clone(),
+                    ListenerState {
+                        id: listener.id,
+                        sync: stream,
+                        filters: listener.filters,
+                    },
+                );
+            }
 
-        let worker = StreamDispatcherWorker {
-            stream_id: stream.id.clone(),
-            batch_size: stream.batch_size,
-            batch_timeout: stream.batch_timeout,
-            batch_number: 0,
-            listeners,
-            hwms,
-            persistence,
-        };
-        let (state_change_sink, state_change_source) = mpsc::channel(16);
-        tokio::spawn(worker.run(state_change_source));
+            let worker = StreamDispatcherWorker {
+                stream_id: stream.id,
+                batch_size: stream.batch_size,
+                batch_timeout: stream.batch_timeout,
+                batch_number: 0,
+                listeners,
+                hwms,
+                persistence,
+            };
+            worker.run(state_change_source).await;
+        });
         Ok(Self { state_change_sink })
     }
 
@@ -348,7 +349,7 @@ impl StreamDispatcherWorker {
             let mut sync_events = vec![];
             for listener in self.listeners.values_mut() {
                 let hwm = hwms.get(&listener.id).unwrap();
-                if let Some(sync_event) = listener.sync.get_event(&hwm.block) {
+                if let Some(sync_event) = listener.sync.get_event(&hwm.block).await {
                     sync_events.push((listener.id.clone(), hwm.block.clone(), sync_event));
                 }
             }
@@ -378,7 +379,7 @@ impl StreamDispatcherWorker {
                     (update_to, false)
                 }
                 ListenerEvent::Rollback(_) => {
-                    let update_to = Some(listener.sync.get_next_rollback(&block_ref));
+                    let update_to = Some(listener.sync.get_next_rollback(&block_ref).await);
                     (update_to, true)
                 }
             };

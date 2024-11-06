@@ -13,6 +13,7 @@ blockfrost = { version = "1", default-features = false, features = ["rustls-tls"
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 dashmap = "6"
+futures = "0.3"
 pallas-codec = "0.31"
 pallas-crypto = "0.31"
 pallas-primitives = "0.31"

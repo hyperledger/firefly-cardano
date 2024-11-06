@@ -77,7 +77,7 @@ pub struct BlockchainClient {
 }
 
 impl BlockchainClient {
-    pub async fn new(config: &CardanoConnectConfig) -> Result<Self> {
+    pub async fn new(config: &CardanoConnectConfig) -> Self {
         let blockchain = &config.connector.blockchain;
 
         let n2c = {
@@ -88,15 +88,15 @@ impl BlockchainClient {
                 blockchain.genesis_values(),
                 blockchain.blockfrost_key.as_ref(),
             )
-            .await?;
+            .await;
             RwLock::new(client)
         };
 
-        Ok(Self {
+        Self {
             client: ClientImpl::NodeToClient(n2c),
             genesis_hash: blockchain.genesis_hash().to_string(),
             era: blockchain.era,
-        })
+        }
     }
 
     #[allow(unused)]
@@ -129,7 +129,7 @@ impl BlockchainClient {
             ClientImpl::Mock(mock) => Box::new(mock.sync()),
             ClientImpl::NodeToClient(n2c) => {
                 let client = n2c.read().await;
-                Box::new(client.open_chainsync().await?)
+                Box::new(client.open_chainsync()?)
             }
         };
         Ok(ChainSyncClientWrapper { inner })
@@ -143,7 +143,7 @@ pub trait ChainSyncClient {
         &mut self,
         points: &[BlockReference],
     ) -> Result<(Option<BlockReference>, BlockReference)>;
-    async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>>;
+    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>>;
 }
 
 pub struct ChainSyncClientWrapper {
@@ -161,7 +161,7 @@ impl ChainSyncClient for ChainSyncClientWrapper {
     ) -> Result<(Option<BlockReference>, BlockReference)> {
         self.inner.find_intersect(points).await
     }
-    async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
+    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
         self.inner.request_block(block_ref).await
     }
 }

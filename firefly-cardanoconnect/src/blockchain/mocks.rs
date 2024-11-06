@@ -66,7 +66,7 @@ impl ChainSyncClient for MockChainSync {
         Ok((intersect.map(|i| i.as_reference()), tip))
     }
 
-    async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
+    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
         self.chain.request_block(block_ref).await
     }
 }

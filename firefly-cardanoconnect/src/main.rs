@@ -53,7 +53,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
     let blockchain = if mock_data {
         Arc::new(BlockchainClient::mock().await)
     } else {
-        Arc::new(BlockchainClient::new(config).await?)
+        Arc::new(BlockchainClient::new(config).await)
     };
 
     let state = AppState {

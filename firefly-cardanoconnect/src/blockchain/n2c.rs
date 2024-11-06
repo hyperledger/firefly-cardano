@@ -1,6 +1,9 @@
-use std::path::{Path, PathBuf};
+use std::{
+    path::{Path, PathBuf},
+    time::Duration,
+};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
 use blockfrost::{BlockFrostSettings, BlockfrostAPI, BlockfrostError, Pagination};
 use pallas_crypto::hash::Hasher;
@@ -14,10 +17,13 @@ use pallas_network::{
 };
 use pallas_primitives::conway::Tx;
 use pallas_traverse::{wellknown::GenesisValues, MultiEraBlock, MultiEraHeader};
+use tokio::time;
+use tracing::warn;
 
 use crate::{
     config::Secret,
     streams::{BlockInfo, BlockReference},
+    utils::LazyInit,
 };
 
 use super::{ChainSyncClient, RequestNextResponse};
@@ -28,7 +34,7 @@ pub struct NodeToClient {
     genesis_hash: String,
     genesis_values: GenesisValues,
     blockfrost: Option<BlockfrostAPI>,
-    client: NodeClient,
+    client: LazyInit<NodeClient>,
 }
 
 impl NodeToClient {
@@ -38,18 +44,18 @@ impl NodeToClient {
         genesis_hash: &str,
         genesis_values: GenesisValues,
         blockfrost_key: Option<&Secret<String>>,
-    ) -> Result<Self> {
-        let client = Self::connect(socket, magic).await?;
+    ) -> Self {
+        let client = Self::connect(socket, magic);
         let blockfrost =
             blockfrost_key.map(|key| BlockfrostAPI::new(&key.0, BlockFrostSettings::new()));
-        Ok(Self {
+        Self {
             socket: socket.to_path_buf(),
             magic,
             genesis_hash: genesis_hash.to_string(),
             genesis_values,
             blockfrost,
             client,
-        })
+        }
     }
 
     pub async fn submit(&mut self, transaction: Tx, era: u16) -> Result<String> {
@@ -63,7 +69,8 @@ impl NodeToClient {
             EraTx(era, bytes)
         };
         let response = {
-            self.client
+            self.get_client()
+                .await?
                 .submission()
                 .submit_tx(era_tx)
                 .await
@@ -77,11 +84,11 @@ impl NodeToClient {
         }
     }
 
-    pub async fn open_chainsync(&self) -> Result<N2cChainSync> {
-        let client = Self::connect(&self.socket, self.magic).await?;
+    pub fn open_chainsync(&self) -> Result<N2cChainSync> {
         let Some(blockfrost) = self.blockfrost.clone() else {
             bail!("Cannot use node-to-client without a blockfrost key")
         };
+        let client = Self::connect(&self.socket, self.magic);
         let genesis_hash = self.genesis_hash.clone();
         let genesis_values = self.genesis_values.clone();
         Ok(N2cChainSync {
@@ -92,7 +99,28 @@ impl NodeToClient {
         })
     }
 
-    async fn connect(socket: &Path, magic: u64) -> Result<NodeClient> {
+    async fn get_client(&mut self) -> Result<&mut NodeClient> {
+        time::timeout(Duration::from_secs(10), self.client.get())
+            .await
+            .map_err(|_| anyhow!("could not connect to cardano node"))
+    }
+
+    fn connect(socket: &Path, magic: u64) -> LazyInit<NodeClient> {
+        let socket = socket.to_path_buf();
+        LazyInit::new(async move {
+            let wait_time = Duration::from_secs(10);
+            loop {
+                match Self::try_connect(&socket, magic).await {
+                    Ok(client) => break client,
+                    Err(error) => {
+                        warn!("{error:?}");
+                        time::sleep(wait_time).await;
+                    }
+                }
+            }
+        })
+    }
+    async fn try_connect(socket: &Path, magic: u64) -> Result<NodeClient> {
         NodeClient::connect(socket, magic)
             .await
             .context("could not connect to socket")
@@ -100,7 +128,7 @@ impl NodeToClient {
 }
 
 pub struct N2cChainSync {
-    client: NodeClient,
+    client: LazyInit<NodeClient>,
     blockfrost: BlockfrostAPI,
     genesis_hash: String,
     genesis_values: GenesisValues,
@@ -112,6 +140,8 @@ impl ChainSyncClient for N2cChainSync {
         loop {
             let res = self
                 .client
+                .get()
+                .await
                 .chainsync()
                 .request_or_await_next()
                 .await
@@ -138,13 +168,19 @@ impl ChainSyncClient for N2cChainSync {
         points: &[BlockReference],
     ) -> Result<(Option<BlockReference>, BlockReference)> {
         let points = points.iter().filter_map(block_ref_to_point).collect();
-        let (intersect, tip) = self.client.chainsync().find_intersect(points).await?;
+        let (intersect, tip) = self
+            .client
+            .get()
+            .await
+            .chainsync()
+            .find_intersect(points)
+            .await?;
         let intersect = intersect.map(point_to_block_ref);
         let tip = point_to_block_ref(tip.0);
 
         Ok((intersect, tip))
     }
-    async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
+    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
         let (requested_slot, requested_hash) = match block_ref {
             BlockReference::Origin => (None, &self.genesis_hash),
             BlockReference::Point(number, hash) => (*number, hash),

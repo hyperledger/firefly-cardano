@@ -1,15 +1,17 @@
 use std::{
     collections::{HashMap, VecDeque},
+    fmt::Debug,
     sync::Arc,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{anyhow, bail, Result};
 use tokio::sync::mpsc;
 use tracing::warn;
 
 use crate::{
     blockchain::{BlockchainClient, ChainSyncClient, RequestNextResponse},
     persistence::Persistence,
+    utils::LazyInit,
 };
 
 use super::{BlockInfo, BlockRecord, BlockReference, ListenerId};
@@ -35,17 +37,46 @@ impl DataSource {
         }
     }
 
-    pub async fn listen(
-        &self,
-        id: ListenerId,
-        from: Option<&BlockReference>,
-    ) -> Result<ChainListener> {
-        ChainListener::init(id, &self.blockchain, &self.persistence, from).await
+    pub fn listen(&self, id: ListenerId, from: Option<&BlockReference>) -> ChainListener {
+        let inner = ChainListenerImpl::init(
+            id,
+            self.blockchain.clone(),
+            self.persistence.clone(),
+            from.cloned(),
+        );
+        ChainListener(LazyInit::new(inner))
     }
 }
 
 #[derive(Debug)]
-pub struct ChainListener {
+pub struct ChainListener(LazyInit<Result<ChainListenerImpl>>);
+impl ChainListener {
+    pub async fn get_tip(&mut self) -> Result<BlockReference> {
+        Ok(self.get_impl().await?.get_tip())
+    }
+
+    pub async fn get_event(&mut self, block_ref: &BlockReference) -> Option<ListenerEvent> {
+        self.get_impl().await.unwrap().get_event(block_ref)
+    }
+
+    pub async fn get_next(&mut self, block_ref: &BlockReference) -> Option<BlockReference> {
+        self.get_impl().await.unwrap().get_next(block_ref).await
+    }
+
+    pub async fn get_next_rollback(&mut self, block_ref: &BlockReference) -> BlockReference {
+        self.get_impl().await.unwrap().get_next_rollback(block_ref)
+    }
+
+    async fn get_impl(&mut self) -> Result<&mut ChainListenerImpl> {
+        match self.0.get().await {
+            Ok(res) => Ok(res),
+            Err(e) => Err(anyhow!("could not init chain listener: {e:?}")),
+        }
+    }
+}
+
+#[derive(Debug)]
+pub struct ChainListenerImpl {
     history: VecDeque<BlockInfo>,
     rollbacks: HashMap<BlockReference, BlockInfo>,
     sync_event_source: mpsc::Receiver<ChainSyncEvent>,
@@ -53,18 +84,18 @@ pub struct ChainListener {
     genesis_hash: String,
 }
 
-impl ChainListener {
+impl ChainListenerImpl {
     async fn init(
         id: ListenerId,
-        chain: &BlockchainClient,
-        persistence: &Arc<dyn Persistence>,
-        from: Option<&BlockReference>,
+        chain: Arc<BlockchainClient>,
+        persistence: Arc<dyn Persistence>,
+        from: Option<BlockReference>,
     ) -> Result<Self> {
         let records = persistence.load_history(&id).await?;
         if !records.is_empty() {
-            Self::init_existing(id, chain, persistence, records).await
+            Self::init_existing(id, &chain, persistence, records).await
         } else {
-            Self::init_new(id, chain, persistence, from).await
+            Self::init_new(id, &chain, persistence, from).await
         }
     }
 
@@ -202,7 +233,7 @@ impl ChainListener {
     async fn init_existing(
         id: ListenerId,
         chain: &BlockchainClient,
-        persistence: &Arc<dyn Persistence>,
+        persistence: Arc<dyn Persistence>,
         records: Vec<BlockRecord>,
     ) -> Result<Self> {
         let mut history = Vec::new();
@@ -240,11 +271,7 @@ impl ChainListener {
         let (sync_event_sink, sync_event_source) = mpsc::channel(16);
         let (block_record_sink, block_record_source) = mpsc::unbounded_channel();
         tokio::spawn(Self::stay_in_sync(sync, sync_event_sink));
-        tokio::spawn(Self::persist_blocks(
-            id,
-            persistence.clone(),
-            block_record_source,
-        ));
+        tokio::spawn(Self::persist_blocks(id, persistence, block_record_source));
         Ok(Self {
             history,
             rollbacks,
@@ -257,11 +284,11 @@ impl ChainListener {
     async fn init_new(
         id: ListenerId,
         chain: &BlockchainClient,
-        persistence: &Arc<dyn Persistence>,
-        from: Option<&BlockReference>,
+        persistence: Arc<dyn Persistence>,
+        from: Option<BlockReference>,
     ) -> Result<Self> {
         let mut sync = chain.sync().await?;
-        let head_ref = match from {
+        let head_ref = match &from {
             Some(block_ref) => {
                 // If the caller passed a block reference, they're starting from either the origin or a specific point
                 let (head, _) = sync.find_intersect(&[block_ref.clone()]).await?;
@@ -323,11 +350,7 @@ impl ChainListener {
         let (sync_event_sink, sync_event_source) = mpsc::channel(16);
         let (block_record_sink, block_record_source) = mpsc::unbounded_channel();
         tokio::spawn(Self::stay_in_sync(sync, sync_event_sink));
-        tokio::spawn(Self::persist_blocks(
-            id,
-            persistence.clone(),
-            block_record_source,
-        ));
+        tokio::spawn(Self::persist_blocks(id, persistence, block_record_source));
         Ok(Self {
             history,
             rollbacks: HashMap::new(),

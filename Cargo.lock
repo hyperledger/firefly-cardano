@@ -717,6 +717,7 @@ dependencies = [
  "clap",
  "dashmap",
  "firefly-server",
+ "futures",
  "hex",
  "minicbor",
  "pallas-codec",
