@@ -1,5 +1,7 @@
 [workspace]
 
-members = ["submit-tx"]
+members = [
+    "simple-tx",
+]
 
 resolver = "2"

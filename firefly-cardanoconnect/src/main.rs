@@ -63,7 +63,13 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
         Arc::new(BlockchainClient::new(config).await?)
     };
     let contracts = if let Some(contracts) = &config.contracts {
-        Arc::new(ContractManager::new(contracts).await?)
+        let blockfrost_key = config
+            .connector
+            .blockchain
+            .blockfrost_key
+            .as_ref()
+            .map(|k| k.0.as_str());
+        Arc::new(ContractManager::new(contracts, blockfrost_key).await?)
     } else {
         Arc::new(ContractManager::none())
     };

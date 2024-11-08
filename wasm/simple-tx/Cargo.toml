@@ -1,11 +1,13 @@
 [package]
-name = "submit-tx"
+name = "simple-tx"
 version = "0.1.0"
 edition = "2021"
 repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
 
 [dependencies]
-balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "ce8189c" }
+balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "cae513c" }
+pallas-addresses = "0.31.0"
+pallas-traverse = "0.31.0"
 serde = { version = "1", features = ["derive"] }
 
 [lib]

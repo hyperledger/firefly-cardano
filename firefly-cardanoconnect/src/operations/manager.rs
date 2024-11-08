@@ -3,7 +3,6 @@ use std::sync::Arc;
 use anyhow::Context;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use pallas_primitives::conway::Tx;
-use serde::Deserialize;
 use serde_json::Value;
 
 use crate::{
@@ -58,8 +57,7 @@ impl OperationsManager {
                 return Err(err.into());
             }
         };
-        let maybe_tx: Option<PartialTx> = serde_json::from_value(value).ok();
-        if let Some(tx) = maybe_tx {
+        if let Some(tx) = value {
             op.tx_id = Some(self.submit_transaction(from, tx).await?);
         }
 
@@ -76,8 +74,8 @@ impl OperationsManager {
         Ok(op)
     }
 
-    async fn submit_transaction(&self, address: &str, tx: PartialTx) -> ApiResult<String> {
-        let mut transaction: Tx = minicbor::decode(&tx.tx)?;
+    async fn submit_transaction(&self, address: &str, tx: Vec<u8>) -> ApiResult<String> {
+        let mut transaction: Tx = minicbor::decode(&tx)?;
         self.signer
             .sign(address.to_string(), &mut transaction)
             .await?;
@@ -88,9 +86,4 @@ impl OperationsManager {
             .context("could not submit transaction")?;
         Ok(tx_id)
     }
-}
-
-#[derive(Deserialize)]
-struct PartialTx {
-    tx: Vec<u8>,
 }

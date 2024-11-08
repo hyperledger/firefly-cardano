@@ -1113,6 +1113,7 @@ dependencies = [
  "futures",
  "hex",
  "minicbor 0.25.1",
+ "pallas-addresses 0.31.0",
  "pallas-codec 0.31.0",
  "pallas-crypto 0.31.0",
  "pallas-network 0.31.0",
