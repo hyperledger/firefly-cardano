@@ -4,7 +4,6 @@ connector:
   signerUrl: http://firefly-cardanosigner:8555
   blockchain:
     socket: /ipc/node.socket
-    blockfrostKey: xxxxx
     network: preview
 persistence:
   type: sqlite
