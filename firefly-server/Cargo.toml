@@ -8,9 +8,11 @@ repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
 aide = { version = "0.13", features = ["axum"] }
 axum = "0.7"
 anyhow = "1"
+convert_case = "0.6"
 duration-str = "0.11"
 figment = { version = "0.10", features = ["yaml", "env"] }
 home = "0.5"
+itertools = "0.13"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 schemars = "0.8"
 serde = "1"

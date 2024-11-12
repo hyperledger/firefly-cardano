@@ -1,10 +1,12 @@
 use std::path::PathBuf;
 
 use anyhow::Result;
+use convert_case::{Case, Casing as _};
 use figment::{
     providers::{Data, Env, Format, Yaml},
     Figment,
 };
+use itertools::Itertools;
 use serde::Deserialize;
 
 pub fn load_config<T>(suffix: &str, defaults: &str, config_files: Vec<PathBuf>) -> Result<T>
@@ -33,13 +35,23 @@ where
     }
 
     for depth in 0..7 {
-        // We want to map env vars like "FIREFLY_CONNECTOR_BLOCKCHAIN_BLOCKFROST_KEY" to paths like "connector.blockchain.blockfrost_key".
+        // We want to map env vars like "FIREFLY_CONNECTOR_BLOCKCHAIN_BLOCKFROST_KEY" to paths like "connector.blockchain.blockfrostKey".
         // We can't tell which underscores should be dots and which should stay underscores, so just guess.
         // If we get it wrong, the caller can always pass "FIREFLY_CONNECTOR.BLOCKCHAIN.BLOCKFROST_KEY" explicitly.
-        let provider =
-            Env::prefixed("FIREFLY_").map(move |env| env.as_str().replacen("_", ".", depth).into());
+        let provider = Env::prefixed("FIREFLY_")
+            .map(move |env| {
+                let name = env.as_str().replacen("_", ".", depth);
+                let camel: String = Itertools::intersperse(
+                    name.split(".").map(|chunk| chunk.to_case(Case::Camel)),
+                    ".".into(),
+                )
+                .collect();
+                camel.into()
+            })
+            .lowercase(false);
         config = config.merge(provider);
     }
+    println!("{config:#?}");
     Ok(config.extract()?)
 }
 
