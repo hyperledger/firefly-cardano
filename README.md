@@ -32,6 +32,12 @@ Should you prefer to load the devshell automatically when in a terminal
   ```
   direnv allow
   ```
+## Play with it!
+
+To start up the connector please execute:
+```bash
+docker compose -f docker-compose.node.yaml -f docker-compose.yaml up
+```
 
 ## Architecture
 
