@@ -53,6 +53,7 @@ Should you prefer to load the devshell automatically when in a terminal
   ```bash
   docker compose -f ./infra/docker-compose.node.yaml -f ./infra/docker-compose.yaml up
   ```
+- Swagger definitions can be viewed at `http://localhost:5018/api` and `http://localhost:8555/api`
 
 ## Architecture
 
