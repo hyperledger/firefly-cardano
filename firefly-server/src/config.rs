@@ -51,7 +51,6 @@ where
             .lowercase(false);
         config = config.merge(provider);
     }
-    println!("{config:#?}");
     Ok(config.extract()?)
 }
 
