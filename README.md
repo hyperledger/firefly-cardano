@@ -36,7 +36,7 @@ Should you prefer to load the devshell automatically when in a terminal
 
 To start up the connector please execute:
 ```bash
-docker compose -f docker-compose.node.yaml -f docker-compose.yaml up
+docker compose -f ./infra/docker-compose.node.yaml -f ./infra/docker-compose.yaml up
 ```
 
 ## Architecture
