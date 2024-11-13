@@ -1,0 +1,30 @@
+services:
+  init-node:
+    image: ghcr.io/input-output-hk/mithril-client:2442.0-0d4d6bc
+    entrypoint: /app/bin/entrypoint.sh
+    user: "${UID}:${GID}"
+    environment:
+      NETWORK: preview
+      UNPACK_DIR: /data
+    volumes:
+    - ./mithril-entrypoint.sh:/app/bin/entrypoint.sh
+    - node-db:/data
+
+  cardano-node:
+    image: ghcr.io/intersectmbo/cardano-node:10.1.2
+    user: "${UID}:${GID}"
+    environment:
+      NETWORK: preview
+    volumes:
+      - node-db:/data
+      - ./ipc:/ipc
+    healthcheck:
+      test: "ls /ipc/node.socket"
+      interval: 3s
+      retries: 0
+    depends_on:
+      init-node:
+        condition: service_completed_successfully
+
+volumes:
+  node-db:

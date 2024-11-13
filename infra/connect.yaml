@@ -1,0 +1,10 @@
+log:
+  level: info
+connector:
+  signerUrl: http://firefly-cardanosigner:8555
+  blockchain:
+    socket: /ipc/node.socket
+    network: preview
+persistence:
+  type: sqlite
+  path: /db/db.sqlite3

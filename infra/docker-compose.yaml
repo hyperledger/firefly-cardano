@@ -1,0 +1,28 @@
+services:
+  firefly-cardanoconnect:
+    build:
+      context: ..
+      target: firefly-cardanoconnect
+    command: ./firefly-cardanoconnect --config-file ./config.yaml
+    environment:
+      - FIREFLY_CONNECTOR_BLOCKCHAIN_BLOCKFROST_KEY=${BLOCKFROST_KEY}
+    ports:
+      - 5018:5018
+    volumes:
+      - ./ipc:/ipc
+      - connect-db:/db
+      - ./connect.yaml:/app/config.yaml
+
+  firefly-cardanosigner:
+    build:
+      context: ..
+      target: firefly-cardanosigner
+    command: ./firefly-cardanosigner --config-file ./config.yaml
+    ports:
+      - 8555:8555
+    volumes:
+      - ./wallet:/wallet
+      - ./signer.yaml:/app/config.yaml
+
+volumes:
+  connect-db:
