@@ -25,6 +25,9 @@ Should you prefer to load the devshell automatically when in a terminal
 
   # And in case your system does not automatically .bashrc
   echo 'eval "$(direnv hook bash)"' >> ~/.bash_profile
+
+  # Configure blockfrost key
+  cp .envrc.local.example .envrc.local && vi .envrc.local
   ```
 
 - Renter the shell for direnv to take effect
@@ -34,10 +37,22 @@ Should you prefer to load the devshell automatically when in a terminal
   ```
 ## Play with it!
 
-To start up the connector please execute:
-```bash
-docker compose -f ./infra/docker-compose.node.yaml -f ./infra/docker-compose.yaml up
-```
+- Export blockfrost key (done automaticaly by direnv if you have it set up):
+  ```
+  export BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
+  ```
+- Create Cardano wallet and put the signing key in `infra/wallet/${address}.skey`
+  ```
+    cardano-cli address key-gen --verification-key-file firefly.vkey --signing-key-file firefly.skey
+    cardano-cli address build --payment-verification-key-file firefly.vkey --out-file firefly.addr
+    mkdir -p infra/wallet
+    cp firefly.skey infra/wallet/$(cat firefly.addr).skey
+    rm firefly.vkey firefly.skey firefly.addr
+  ```
+- To start up the connector please execute:
+  ```bash
+  docker compose -f ./infra/docker-compose.node.yaml -f ./infra/docker-compose.yaml up
+  ```
 
 ## Architecture
 
