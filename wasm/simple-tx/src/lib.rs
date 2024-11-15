@@ -1,10 +1,11 @@
 use balius_sdk::{
-    txbuilder::{FeeChangeReturn, Hash, OutputBuilder, TxBuilder, TxoRef},
-    wit::balius::app::ledger::{AddressPattern, UtxoPattern},
+    txbuilder::{
+        primitives::TransactionInput, AddressPattern, BuildContext, BuildError, FeeChangeReturn,
+        InputExpr, OutputBuilder, TxBuilder, UtxoPattern, UtxoSource,
+    },
     Config, FnHandler, NewTx, Params, Worker, WorkerResult,
 };
 use pallas_addresses::Address;
-use pallas_traverse::MultiEraOutput;
 use serde::Deserialize;
 
 #[derive(Deserialize)]
@@ -15,53 +16,44 @@ struct TransferRequest {
     pub amount: u64,
 }
 
+struct CoinSelectionInput(UtxoSource, u64);
+
 // TODO: this is a naive approach to coin selection,
 // balius can probably help with a better one
-fn select_inputs(from_address: &Address, amount: u64) -> WorkerResult<Vec<TxoRef>> {
-    let from_pattern = UtxoPattern {
-        address: Some(AddressPattern {
-            exact_address: from_address.to_vec(),
-        }),
-        asset: None,
-    };
+impl InputExpr for CoinSelectionInput {
+    fn eval(&self, ctx: &BuildContext) -> Result<Vec<TransactionInput>, BuildError> {
+        let utxos = self.0.resolve(ctx)?;
+        // If we know the fee, add it to the target amount.
+        // If not, overestimate the fee so we pick at least as many TXOs as needed.
+        let target_lovelace = self.1
+            + if ctx.estimated_fee == 0 {
+                2_000_000
+            } else {
+                ctx.estimated_fee
+            };
 
-    let mut refs = vec![];
-    let mut total_so_far = 0;
-    let mut utxo_page = Some(balius_sdk::wit::balius::app::ledger::search_utxos(
-        &from_pattern,
-        None,
-        16,
-    )?);
-    while let Some(page) = utxo_page.take() {
-        for utxo in page.utxos {
-            let body = MultiEraOutput::decode(pallas_traverse::Era::Conway, &utxo.body)
-                .map_err(|e| balius_sdk::Error::Internal(e.to_string()))?;
-            let value = body.value();
-            if value.coin() == 0 {
+        let mut inputs = vec![];
+        let mut lovelace_so_far = 0;
+        for (ref_, txo) in utxos.refs().zip(utxos.txos()) {
+            let coin = txo.value().coin();
+            if coin == 0 {
                 continue;
             }
-
-            let hash = Hash::<32>::from(utxo.ref_.tx_hash.as_slice());
-            let ref_ = TxoRef::new(hash, utxo.ref_.tx_index as u64);
-            refs.push(ref_);
-
-            total_so_far += value.coin();
-            if total_so_far >= amount {
-                return Ok(refs);
+            inputs.push(TransactionInput {
+                transaction_id: ref_.hash,
+                index: ref_.index,
+            });
+            lovelace_so_far += coin;
+            if lovelace_so_far >= target_lovelace {
+                break;
             }
         }
-        if let Some(token) = page.next_token {
-            utxo_page = Some(balius_sdk::wit::balius::app::ledger::search_utxos(
-                &from_pattern,
-                Some(&token),
-                16,
-            )?)
+        if lovelace_so_far >= target_lovelace {
+            Ok(inputs)
+        } else {
+            Err(BuildError::OutputsTooHigh)
         }
     }
-    Err(balius_sdk::Error::Internal(format!(
-        "not enough funds (need {}, have {})",
-        amount, total_so_far
-    )))
 }
 
 fn send_ada(_: Config<()>, req: Params<TransferRequest>) -> WorkerResult<NewTx> {
@@ -71,20 +63,21 @@ fn send_ada(_: Config<()>, req: Params<TransferRequest>) -> WorkerResult<NewTx> 
     let from_address = Address::from_bech32(&req.from_address).unwrap();
     let to_address = Address::from_bech32(&req.to_address).unwrap();
 
-    let refs = select_inputs(&from_address, req.amount)?;
-    for input in &refs {
-        tx = tx.with_input(input.clone());
-    }
+    let address_source = UtxoSource::Search(UtxoPattern {
+        address: Some(AddressPattern {
+            exact_address: from_address.to_vec(),
+        }),
+        ..UtxoPattern::default()
+    });
 
     tx = tx
+        .with_input(CoinSelectionInput(address_source.clone(), req.amount))
         .with_output(
             OutputBuilder::new()
                 .address(to_address)
                 .with_value(req.amount),
         )
-        .with_output(FeeChangeReturn(balius_sdk::txbuilder::UtxoSource::Refs(
-            refs,
-        )));
+        .with_output(FeeChangeReturn(address_source));
 
     Ok(NewTx(Box::new(tx)))
 }
