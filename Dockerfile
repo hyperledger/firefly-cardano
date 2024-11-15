@@ -8,8 +8,8 @@ WORKDIR /app
 FROM base AS planner
 COPY firefly-cardanoconnect /app/firefly-cardanoconnect
 COPY firefly-cardanosigner /app/firefly-cardanosigner
-COPY firefly-demo /app/firefly-demo
 COPY firefly-server /app/firefly-server
+COPY scripts /app/scripts
 COPY Cargo.toml Cargo.lock /app/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
