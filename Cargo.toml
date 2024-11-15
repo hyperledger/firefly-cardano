@@ -4,6 +4,7 @@ members = [
     "firefly-cardanoconnect",
     "firefly-cardanosigner",
     "firefly-server",
+    "firefly-demo",
 ]
 
 resolver = "2"
