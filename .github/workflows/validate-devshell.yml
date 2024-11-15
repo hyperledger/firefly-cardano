@@ -14,7 +14,7 @@ jobs:
     - name: 🚀 Eval
       run: nix eval .#devShells.x86_64-linux.default --apply toString
 
-  validate-devshell-macos:
+  validate-devshell-x86_64-darwin:
     runs-on: macos-latest
     steps:
     - name: 📥 Checkout repository
@@ -22,6 +22,14 @@ jobs:
     - name: 🧰 Setup Nix
       uses: nixbuild/nix-quick-install-action@v29
     - name: 🚀 Eval
-      run: |
-        nix eval .#devShells.x86_64-darwin.default --apply toString
-        nix eval .#devShells.aarch64-darwin.default --apply toString
+      run: nix eval .#devShells.x86_64-darwin.default --apply toString
+
+  validate-devshell-aarch64-darwin:
+    runs-on: macos-latest
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4.2.1
+    - name: 🧰 Setup Nix
+      uses: nixbuild/nix-quick-install-action@v29
+    - name: 🚀 Eval
+      run: nix eval .#devShells.aarch64-darwin.default --apply toString
