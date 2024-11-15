@@ -1,3 +1,8 @@
+#!/usr/bin/env sh
+
+# Required to run the connector
 export BLOCKFROST_KEY=xxxxxxxxxxx
+
+# Required when running demo. ADDR_FROM should be configured in `wallet` directory
 export ADDR_FROM=addr_test1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 export ADDR_TO=addr_test1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
