@@ -1,1 +1,3 @@
 export BLOCKFROST_KEY=xxxxxxxxxxx
+export ADDR_FROM=addr_test1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
+export ADDR_TO=addr_test1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
