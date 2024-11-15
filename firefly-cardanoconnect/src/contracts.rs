@@ -1,10 +1,7 @@
 use std::{path::PathBuf, sync::Arc};
 
 use anyhow::{bail, Result};
-use balius_runtime::{
-    ledgers::Ledger,
-    Response, Runtime, Store,
-};
+use balius_runtime::{ledgers::Ledger, Response, Runtime, Store};
 use ledger::BlockfrostLedger;
 use serde::Deserialize;
 use serde_json::{json, Value};

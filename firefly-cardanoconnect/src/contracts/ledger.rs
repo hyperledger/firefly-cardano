@@ -12,7 +12,7 @@ pub struct BlockfrostLedger {
 impl BlockfrostLedger {
     pub fn new(key: &str) -> Self {
         Self {
-            client: BlockfrostAPI::new(key, BlockFrostSettings::new())
+            client: BlockfrostAPI::new(key, BlockFrostSettings::new()),
         }
     }
 }
@@ -43,7 +43,9 @@ impl CustomLedger for BlockfrostLedger {
         max_items: u32,
     ) -> Result<UtxoPage, LedgerError> {
         if pattern.asset.is_some() {
-            return Err(LedgerError::Internal("querying by asset is not implemented".into()));
+            return Err(LedgerError::Internal(
+                "querying by asset is not implemented".into(),
+            ));
         }
         let Some(address) = pattern.address else {
             return Err(LedgerError::Internal("address is required".into()));
@@ -52,8 +54,10 @@ impl CustomLedger for BlockfrostLedger {
             .and_then(|a| a.to_bech32())
             .map_err(|err| LedgerError::Internal(err.to_string()))?;
         let page = match start {
-            Some(s) => s.parse::<usize>().map_err(|e| LedgerError::Internal(e.to_string()))?,
-            None => 1
+            Some(s) => s
+                .parse::<usize>()
+                .map_err(|e| LedgerError::Internal(e.to_string()))?,
+            None => 1,
         };
 
         let pagination = Pagination::new(blockfrost::Order::Asc, page, max_items as usize);
@@ -66,8 +70,8 @@ impl CustomLedger for BlockfrostLedger {
         let mut utxos = vec![];
         let mut txs = TxDict::new(&mut self.client);
         for utxo in query {
-            let raw_tx_hash = hex::decode(&utxo.tx_hash)
-                .map_err(|e| LedgerError::Upstream(e.to_string()))?;
+            let raw_tx_hash =
+                hex::decode(&utxo.tx_hash).map_err(|e| LedgerError::Upstream(e.to_string()))?;
             let ref_ = TxoRef {
                 tx_hash: raw_tx_hash,
                 tx_index: utxo.tx_index as u32,
@@ -78,7 +82,7 @@ impl CustomLedger for BlockfrostLedger {
             let Some(txo) = tx.output_at(utxo.tx_index as usize) else {
                 return Err(LedgerError::NotFound(ref_));
             };
-            
+
             utxos.push(Utxo {
                 ref_,
                 body: txo.encode(),
@@ -91,10 +95,7 @@ impl CustomLedger for BlockfrostLedger {
             None
         };
 
-        Ok(UtxoPage {
-            utxos,
-            next_token,
-        })
+        Ok(UtxoPage { utxos, next_token })
     }
 }
 
@@ -119,8 +120,8 @@ impl<'a> TxDict<'a> {
                     .transactions_cbor(entry.key())
                     .await
                     .map_err(|e| LedgerError::Upstream(e.to_string()))?;
-                let bytes = hex::decode(&tx.cbor)
-                    .map_err(|e| LedgerError::Internal(e.to_string()))?;
+                let bytes =
+                    hex::decode(&tx.cbor).map_err(|e| LedgerError::Internal(e.to_string()))?;
 
                 Ok(entry.insert(bytes))
             }
@@ -128,7 +129,6 @@ impl<'a> TxDict<'a> {
     }
 
     fn decode_tx(bytes: &[u8]) -> Result<MultiEraTx<'_>, LedgerError> {
-        MultiEraTx::decode(bytes)
-            .map_err(|e| LedgerError::Internal(e.to_string()))
+        MultiEraTx::decode(bytes).map_err(|e| LedgerError::Internal(e.to_string()))
     }
 }
