@@ -8,6 +8,7 @@ WORKDIR /app
 FROM base AS planner
 COPY firefly-cardanoconnect /app/firefly-cardanoconnect
 COPY firefly-cardanosigner /app/firefly-cardanosigner
+COPY firefly-demo /app/firefly-demo
 COPY firefly-server /app/firefly-server
 COPY Cargo.toml Cargo.lock /app/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
@@ -19,7 +20,10 @@ FROM base AS builder
 COPY --from=planner /app/recipe.json recipe.json
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
-    cargo chef cook --release --workspace --recipe-path recipe.json
+    cargo chef cook --release --workspace \
+    --bin firefly-cardanoconnect \
+    --bin firefly-cardanosigner \
+    --recipe-path recipe.json
 COPY firefly-cardanoconnect /app/firefly-cardanoconnect
 COPY firefly-cardanosigner /app/firefly-cardanosigner
 COPY firefly-server /app/firefly-server
