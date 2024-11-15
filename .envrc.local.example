@@ -3,6 +3,6 @@
 # Required to run the connector
 export BLOCKFROST_KEY=xxxxxxxxxxx
 
-# Required when running demo. ADDR_FROM should be configured in `wallet` directory
+# Required when running demo. ADDR_FROM should be the address of a private key saved in `infra/wallet` directory
 export ADDR_FROM=addr_test1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
 export ADDR_TO=addr_test1xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx
