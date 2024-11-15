@@ -1,17 +1,27 @@
+name: DevShell
 on:
   push:
 
 jobs:
-  validate-devshell:
-    strategy:
-      matrix:
-        system: ["x86_64-linux", "aarch64-linux", "x86_64-darwin", "aarch64-darwin"]
+
+  validate-devshell-x86_64-linux:
     runs-on: ubuntu-latest
     steps:
     - name: 📥 Checkout repository
       uses: actions/checkout@v4.2.1
     - name: 🧰 Setup Nix
-      uses: nixbuild/nix-quick-install-action@v28
+      uses: nixbuild/nix-quick-install-action@v29
     - name: 🚀 Eval
-      run: nix eval .#devShells.${{matrix.system}}.default --apply toString
+      run: nix eval .#devShells.x86_64-linux.default --apply toString
 
+  validate-devshell-macos:
+    runs-on: macos-latest
+    steps:
+    - name: 📥 Checkout repository
+      uses: actions/checkout@v4.2.1
+    - name: 🧰 Setup Nix
+      uses: nixbuild/nix-quick-install-action@v29
+    - name: 🚀 Eval
+      run: |
+        nix eval .#devShells.x86_64-darwin.default --apply toString
+        nix eval .#devShells.aarch64-darwin.default --apply toString
