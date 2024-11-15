@@ -268,6 +268,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "d86b93f97252c47b41663388e6d155714a9d0c398b99f1005cbc5f978b29f445"
 
 [[package]]
+name = "bech32"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "d965446196e3b7decd44aa7ee49e31d630118f90ef12f97900f262eb915c951d"
+
+[[package]]
 name = "bip39"
 version = "2.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -755,10 +761,12 @@ dependencies = [
  "aide",
  "anyhow",
  "axum",
+ "bech32 0.11.0",
  "clap",
  "firefly-server",
  "hex",
  "minicbor",
+ "pallas-addresses",
  "pallas-crypto",
  "pallas-primitives",
  "pallas-wallet",
@@ -1409,7 +1417,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5d47110e25338f995c1f29858292c016b974d23fa3a1ce97fff542047b6c2142"
 dependencies = [
  "base58",
- "bech32",
+ "bech32 0.9.1",
  "crc",
  "cryptoxide",
  "hex",
@@ -1470,7 +1478,7 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "5627a5cd6512eaa3900b93d8b6e604d495a31d4439c9f34d9f88ec38383c0ddc"
 dependencies = [
  "base58",
- "bech32",
+ "bech32 0.9.1",
  "hex",
  "log",
  "pallas-codec",
@@ -1502,7 +1510,7 @@ version = "0.31.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "8d76c282bf2c191eb9d5326ad5f023fc0fde058c3a8e8bd7ef3ff0c4fbba86b4"
 dependencies = [
- "bech32",
+ "bech32 0.9.1",
  "bip39",
  "cryptoxide",
  "ed25519-bip32",

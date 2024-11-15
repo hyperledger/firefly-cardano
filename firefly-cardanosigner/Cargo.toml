@@ -8,10 +8,12 @@ repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
 aide = { version = "0.13", features = ["axum"] }
 axum = "0.7"
 anyhow = "1"
+bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.25"
+pallas-addresses = "0.31"
 pallas-crypto = "0.31"
 pallas-primitives = "0.31"
 pallas-wallet = "0.31"

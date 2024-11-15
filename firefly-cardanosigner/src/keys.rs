@@ -1,7 +1,12 @@
-use std::{collections::HashMap, fs};
+use std::fs;
 
 use anyhow::{anyhow, bail, Context, Result};
-use pallas_crypto::key::ed25519::{SecretKey, SecretKeyExtended};
+use bech32::{Bech32, Hrp};
+use pallas_addresses::Address;
+use pallas_crypto::{
+    hash::Hasher,
+    key::ed25519::{SecretKey, SecretKeyExtended},
+};
 use pallas_primitives::conway::PlutusData::BoundedBytes;
 use pallas_wallet::PrivateKey;
 use serde::Deserialize;
@@ -10,7 +15,7 @@ use crate::config::FileWalletConfig;
 
 #[derive(Default)]
 pub struct KeyStore {
-    keys: HashMap<String, PrivateKey>,
+    keys: Vec<PrivateKey>,
 }
 
 #[derive(Deserialize)]
@@ -23,19 +28,11 @@ struct SigningKeyContents {
 
 impl KeyStore {
     pub fn from_fs(config: &FileWalletConfig) -> Result<Self> {
-        let mut keys = HashMap::new();
+        let mut keys = vec![];
 
         let dir_entries = fs::read_dir(&config.path).context("could not read fileWallet.path")?;
         for dir_entry_res in dir_entries {
             let dir_entry = dir_entry_res.context("could not read directory entry")?;
-            let Ok(filename) = dir_entry.file_name().into_string() else {
-                // If the filename isn't a valid string, it's definitely not a valid address
-                continue;
-            };
-            let Some(address) = filename.strip_suffix(".skey") else {
-                // If the filename doesn't end in .skey, we don't consider it as a key
-                continue;
-            };
             let raw_contents = std::fs::read_to_string(dir_entry.path())?;
             let contents: SigningKeyContents = serde_json::from_str(&raw_contents)?;
             let cbor =
@@ -47,14 +44,32 @@ impl KeyStore {
             }
             .context("could not read signing key")?;
 
-            keys.insert(address.to_string(), key);
+            keys.push(key);
         }
         Ok(Self { keys })
     }
 
     pub fn find_signing_key(&self, address: &str) -> Result<Option<&PrivateKey>> {
-        Ok(self.keys.get(address))
+        let Address::Shelley(addr) = Address::from_bech32(address)? else {
+            return Ok(None);
+        };
+        let header = addr.to_header();
+        let hrp = Hrp::parse(addr.hrp()?)?;
+        for key in &self.keys {
+            let key_addr = encode_address(key.public_key().as_ref(), header, &hrp)?;
+            if key_addr == address {
+                return Ok(Some(key));
+            }
+        }
+        Ok(None)
     }
+}
+
+fn encode_address(public_key: &[u8], header: u8, hrp: &Hrp) -> Result<String> {
+    let mut bytes = Vec::with_capacity(29);
+    bytes.push(header);
+    bytes.extend_from_slice(Hasher::<224>::hash(public_key).as_slice());
+    Ok(bech32::encode::<Bech32>(*hrp, &bytes)?)
 }
 
 fn read_normal_key(cbor: Vec<u8>) -> Result<PrivateKey> {
