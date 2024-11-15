@@ -21,6 +21,7 @@ pub struct ContractsConfig {
 }
 
 pub struct ContractManager {
+    components_path: Option<PathBuf>,
     runtime: Option<RwLock<Runtime>>,
 }
 
@@ -29,12 +30,29 @@ impl ContractManager {
         fs::create_dir_all(&config.components_path).await?;
         let runtime = Self::new_runtime(config, blockfrost_key).await?;
         Ok(Self {
+            components_path: Some(config.components_path.clone()),
             runtime: Some(RwLock::new(runtime)),
         })
     }
 
     pub fn none() -> Self {
-        Self { runtime: None }
+        Self {
+            components_path: None,
+            runtime: None,
+        }
+    }
+
+    pub async fn deploy(&self, id: &str, contract: &[u8]) -> Result<()> {
+        let Some(components_path) = self.components_path.as_deref() else {
+            bail!("No contract directory configured");
+        };
+        let path = components_path.join(format!("{id}.wasm"));
+        fs::write(&path, contract).await?;
+        if let Some(rt_lock) = &self.runtime {
+            let mut runtime = rt_lock.write().await;
+            runtime.register_worker(id, path, json!(null)).await?;
+        }
+        Ok(())
     }
 
     pub async fn invoke(

@@ -24,6 +24,21 @@ pub struct InvokeRequest {
 }
 
 #[derive(Deserialize, JsonSchema)]
+pub struct DeployRequest {
+    /// The FireFly operation ID of this request.
+    pub id: String,
+    /// A hex-encoded WASM component.
+    pub contract: String,
+    /// A description of the schema for this contract.
+    pub definition: ABIContract,
+}
+
+#[derive(Deserialize, JsonSchema)]
+pub struct ABIContract {
+    pub name: String,
+}
+
+#[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct ABIMethod {
     pub name: String,
@@ -68,6 +83,19 @@ impl From<Operation> for GetOperationStatusResponse {
 #[serde(rename_all = "camelCase")]
 pub struct OperationReceipt {
     pub protocol_id: Option<String>,
+}
+
+pub async fn deploy_contract(
+    State(AppState { operations, .. }): State<AppState>,
+    Json(req): Json<DeployRequest>,
+) -> ApiResult<NoContent> {
+    let id = req.id.into();
+    let name = &req.definition.name;
+    let contract = hex::decode(req.contract)?;
+    match operations.deploy(id, name, &contract).await {
+        Ok(()) => Ok(NoContent),
+        Err(error) => Err(error.with_field("submissionRejected", true)),
+    }
 }
 
 pub async fn invoke_contract(

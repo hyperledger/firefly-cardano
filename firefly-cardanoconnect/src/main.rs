@@ -14,7 +14,7 @@ use operations::OperationsManager;
 use routes::{
     chain::get_chain_tip,
     health::health,
-    operations::{get_operation_status, invoke_contract},
+    operations::{deploy_contract, get_operation_status, invoke_contract},
     streams::{
         create_listener, create_stream, delete_listener, delete_stream, get_listener, get_stream,
         list_listeners, list_streams, update_stream,
@@ -102,6 +102,7 @@ async fn main() -> Result<()> {
 
     let router = ApiRouter::new()
         .api_route("/health", get(health))
+        .api_route("/contracts/deploy", post(deploy_contract))
         .api_route("/contracts/invoke", post(invoke_contract))
         .api_route("/transactions", post(submit_transaction))
         .api_route("/transactions/id", get(get_operation_status))

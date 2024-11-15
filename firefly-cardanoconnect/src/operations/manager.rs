@@ -34,6 +34,27 @@ impl OperationsManager {
         }
     }
 
+    pub async fn deploy(&self, id: OperationId, name: &str, contract: &[u8]) -> ApiResult<()> {
+        let mut op = Operation {
+            id,
+            status: OperationStatus::Pending,
+            tx_id: None,
+        };
+        self.persistence.write_operation(&op).await?;
+        match self.contracts.deploy(name, contract).await {
+            Ok(()) => {
+                op.status = OperationStatus::Succeeded;
+                self.persistence.write_operation(&op).await?;
+                Ok(())
+            }
+            Err(err) => {
+                op.status = OperationStatus::Failed(err.to_string());
+                self.persistence.write_operation(&op).await?;
+                Err(err.into())
+            }
+        }
+    }
+
     pub async fn invoke(
         &self,
         id: OperationId,

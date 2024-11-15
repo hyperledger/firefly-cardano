@@ -5,6 +5,9 @@ members = [
     "firefly-cardanosigner",
     "firefly-server",
     "scripts/demo",
+    "scripts/deploy-contract",
 ]
+
+exclude = ["wasm"]
 
 resolver = "2"
