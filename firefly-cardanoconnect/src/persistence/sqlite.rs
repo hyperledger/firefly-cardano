@@ -263,7 +263,7 @@ impl Persistence for SqlitePersistence {
         self.conn
             .call_unwrap(move |c| {
                 c.prepare_cached(
-                    "SELECT block_height, block_slot, block_hash, parent_hash, cbor, transaction_hashes, rolled_back
+                    "SELECT block_height, block_slot, block_hash, parent_hash, transaction_hashes, transactions, rolled_back
                     FROM block_records
                     WHERE listener_id = ?1
                     ORDER BY id",
@@ -286,7 +286,7 @@ impl Persistence for SqlitePersistence {
         self.conn.call_unwrap(move |c| {
             let tx = c.transaction()?;
             let mut insert = tx.prepare_cached(
-                "INSERT INTO block_records (listener_id, block_height, block_slot, block_hash, parent_hash, cbor, transaction_hashes, rolled_back)
+                "INSERT INTO block_records (listener_id, block_height, block_slot, block_hash, parent_hash, transaction_hashes, transactions, rolled_back)
                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
 
@@ -295,11 +295,15 @@ impl Persistence for SqlitePersistence {
                 let block_slot = record.block.block_slot;
                 let block_hash = record.block.block_hash.clone();
                 let parent_hash = record.block.parent_hash.clone();
-                let cbor = record.block.cbor;
                 let transaction_hashes = serde_json::to_string(&record.block.transaction_hashes)?;
+                let transactions = {
+                    let mut bytes = vec![];
+                    minicbor::encode(&record.block.transactions, &mut bytes).expect("infallible");
+                    bytes
+                };
                 let rolled_back = record.rolled_back;
 
-                insert.execute(params![listener_id, block_height, block_slot, block_hash, parent_hash, cbor, transaction_hashes, rolled_back])?;
+                insert.execute(params![listener_id, block_height, block_slot, block_hash, parent_hash, transaction_hashes, transactions, rolled_back])?;
             }
 
             drop(insert);
@@ -396,8 +400,14 @@ fn parse_block_record(row: &Row) -> Result<BlockRecord> {
     let block_slot: Option<u64> = row.get("block_slot")?;
     let block_hash: String = row.get("block_hash")?;
     let parent_hash: Option<String> = row.get("parent_hash")?;
-    let cbor: Vec<u8> = row.get("cbor")?;
-    let transaction_hashes: String = row.get("transaction_hashes")?;
+    let transaction_hashes = {
+        let raw: String = row.get("transaction_hashes")?;
+        serde_json::from_str(&raw)?
+    };
+    let transactions = {
+        let raw: Vec<u8> = row.get("transactions")?;
+        minicbor::decode(&raw)?
+    };
     let rolled_back: bool = row.get("rolled_back")?;
     Ok(BlockRecord {
         block: BlockInfo {
@@ -405,8 +415,8 @@ fn parse_block_record(row: &Row) -> Result<BlockRecord> {
             block_slot,
             block_hash,
             parent_hash,
-            cbor,
-            transaction_hashes: serde_json::from_str(&transaction_hashes)?,
+            transaction_hashes,
+            transactions,
         },
         rolled_back,
     })

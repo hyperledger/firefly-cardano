@@ -5,7 +5,6 @@ CREATE TABLE "block_records" (
     "block_slot" BIGINT NULL,
     "block_hash" TEXT NOT NULL,
     "parent_hash" TEXT NULL,
-    "cbor" BLOB NOT NULL,
     "transaction_hashes" TEXT NOT NULL,
     "rolled_back" TINYINT NOT NULL,
     FOREIGN KEY ("listener_id") REFERENCES "listeners" ("id") ON DELETE CASCADE

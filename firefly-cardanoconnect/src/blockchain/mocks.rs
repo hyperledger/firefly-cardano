@@ -192,8 +192,8 @@ impl MockChain {
             block_slot: block_height,
             block_hash: Self::generate_hash(rng),
             parent_hash,
-            cbor: vec![],
             transaction_hashes,
+            transactions: vec![],
         };
         indexes.insert(block.block_hash.clone(), chain.len());
         chain.push(block);
