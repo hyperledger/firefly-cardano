@@ -6,6 +6,7 @@ use crate::{
 };
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use blockfrost::Blockfrost;
 use mocks::MockChain;
 use n2c::NodeToClient;
 use pallas_primitives::conway::Tx;
@@ -13,13 +14,14 @@ use pallas_traverse::wellknown::GenesisValues;
 use serde::Deserialize;
 use tokio::sync::RwLock;
 
+mod blockfrost;
 pub mod mocks;
 mod n2c;
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct BlockchainConfig {
-    pub socket: PathBuf,
+    pub socket: Option<PathBuf>,
     pub blockfrost_key: Option<Secret<String>>,
     pub network: Option<Network>,
     pub network_magic: Option<u64>,
@@ -66,6 +68,7 @@ impl BlockchainConfig {
 }
 
 enum ClientImpl {
+    Blockfrost(Blockfrost),
     NodeToClient(RwLock<NodeToClient>),
     Mock(MockChain),
 }
@@ -77,26 +80,32 @@ pub struct BlockchainClient {
 }
 
 impl BlockchainClient {
-    pub async fn new(config: &CardanoConnectConfig) -> Self {
+    pub async fn new(config: &CardanoConnectConfig) -> Result<Self> {
         let blockchain = &config.connector.blockchain;
 
-        let n2c = {
-            let client = NodeToClient::new(
-                &blockchain.socket,
-                blockchain.magic(),
-                blockchain.genesis_hash(),
-                blockchain.genesis_values(),
-                blockchain.blockfrost_key.as_ref(),
-            )
-            .await;
-            RwLock::new(client)
+        let client = match (&blockchain.socket, &blockchain.blockfrost_key) {
+            (Some(socket), key) => {
+                let client = NodeToClient::new(
+                    socket,
+                    blockchain.magic(),
+                    blockchain.genesis_hash(),
+                    blockchain.genesis_values(),
+                    key.as_ref(),
+                )
+                .await;
+                ClientImpl::NodeToClient(RwLock::new(client))
+            }
+            (None, Some(key)) => {
+                let client = Blockfrost::new(&key.0, blockchain.genesis_hash());
+                ClientImpl::Blockfrost(client)
+            }
+            (None, None) => bail!("Missing blockchain configuration"),
         };
-
-        Self {
-            client: ClientImpl::NodeToClient(n2c),
+        Ok(Self {
+            client,
             genesis_hash: blockchain.genesis_hash().to_string(),
             era: blockchain.era,
-        }
+        })
     }
 
     #[allow(unused)]
@@ -116,6 +125,7 @@ impl BlockchainClient {
 
     pub async fn health(&self) -> Result<()> {
         match &self.client {
+            ClientImpl::Blockfrost(_) => Ok(()),
             ClientImpl::Mock(_) => Ok(()),
             ClientImpl::NodeToClient(n2c) => {
                 let client = n2c.read().await;
@@ -126,6 +136,7 @@ impl BlockchainClient {
 
     pub async fn submit(&self, transaction: Tx) -> Result<String> {
         match &self.client {
+            ClientImpl::Blockfrost(bf) => bf.submit(transaction).await,
             ClientImpl::Mock(_) => bail!("mock transaction submission not implemented"),
             ClientImpl::NodeToClient(n2c) => {
                 let mut client = n2c.write().await;
@@ -136,6 +147,7 @@ impl BlockchainClient {
 
     pub async fn sync(&self) -> Result<ChainSyncClientWrapper> {
         let inner: Box<dyn ChainSyncClient + Send + Sync> = match &self.client {
+            ClientImpl::Blockfrost(bf) => Box::new(bf.open_chainsync().await?),
             ClientImpl::Mock(mock) => Box::new(mock.sync()),
             ClientImpl::NodeToClient(n2c) => {
                 let client = n2c.read().await;

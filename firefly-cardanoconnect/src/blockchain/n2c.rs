@@ -5,7 +5,7 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
-use blockfrost::{BlockFrostSettings, BlockfrostAPI, BlockfrostError, Pagination};
+use blockfrost::{BlockFrostSettings, BlockfrostAPI};
 use pallas_crypto::hash::Hasher;
 use pallas_network::{
     facades::NodeClient,
@@ -196,35 +196,7 @@ impl ChainSyncClient for N2cChainSync {
             BlockReference::Origin => (None, &self.genesis_hash),
             BlockReference::Point(number, hash) => (*number, hash),
         };
-        let block = match self.blockfrost.blocks_by_id(requested_hash).await {
-            Err(BlockfrostError::Response { reason, .. }) if reason.status_code == 404 => {
-                return Ok(None)
-            }
-            Err(error) => return Err(error.into()),
-            Ok(block) => block,
-        };
-
-        let block_hash = block.hash;
-        let block_height = block.height.map(|h| h as u64);
-        let block_slot = block.slot.map(|s| s as u64);
-        if requested_slot.is_some_and(|s| block.slot.is_some_and(|b| b as u64 != s)) {
-            bail!("requested_block returned a block in the wrong slot");
-        }
-
-        let transaction_hashes = self
-            .blockfrost
-            .blocks_txs(requested_hash, Pagination::all())
-            .await?;
-
-        let info = BlockInfo {
-            block_hash,
-            block_height,
-            block_slot,
-            parent_hash: block.previous_block,
-            transaction_hashes,
-        };
-
-        Ok(Some(info))
+        super::blockfrost::request_block(&self.blockfrost, requested_hash, requested_slot).await
     }
 }
 
