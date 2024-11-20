@@ -3,6 +3,10 @@ services:
     build:
       context: ..
       target: firefly-cardanoconnect
+    develop:
+      watch:
+      - action: rebuild
+        path: ../firefly-cardanoconnect
     command: ./firefly-cardanoconnect --config-file ./config.yaml
     environment:
       - FIREFLY_CONNECTOR_BLOCKCHAIN_BLOCKFROST_KEY=${BLOCKFROST_KEY}
@@ -17,6 +21,10 @@ services:
     build:
       context: ..
       target: firefly-cardanosigner
+    develop:
+      watch:
+      - action: rebuild
+        path: ../firefly-cardanosigner
     command: ./firefly-cardanosigner --config-file ./config.yaml
     ports:
       - 8555:8555
