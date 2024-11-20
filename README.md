@@ -51,8 +51,13 @@ Should you prefer to load the devshell automatically when in a terminal
   ```
 - To start up the connector please execute:
   ```bash
-  docker compose -f ./infra/docker-compose.node.yaml -f ./infra/docker-compose.yaml up
+  BLOCKFROST_KEY=previewXX docker compose -f ./infra/docker-compose.node.yaml -f ./infra/docker-compose.yaml -p preview up --build -d
+  docker compose -f ./infra/docker-compose.yaml -p preview watch # Auto rebuild on changes
   ```
+  > **_NOTE:_** If you want to avoid running it in the background, omit the `-d` flag.
+
+  > **_NOTE:_** If you want to skip building, omit the `--build` flag.
+
 - Swagger definitions can be viewed at `http://localhost:5018/api` and `http://localhost:8555/api`
 - Execute `just demo` to run the demo application
 
