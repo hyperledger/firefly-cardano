@@ -13,6 +13,8 @@ struct Args {
     contract_path: PathBuf,
     #[arg(long, default_value = "http://localhost:5018")]
     firefly_cardano_url: String,
+    #[arg(long)]
+    firefly_url: Option<String>,
 }
 
 #[tokio::main]
@@ -53,7 +55,11 @@ async fn main() -> Result<()> {
     let contract = hex::encode(&component);
 
     println!("Deploying {name} to FireFly...");
-    let firefly = FireflyCardanoClient::new(&args.firefly_cardano_url);
+    let base_url = args
+        .firefly_url
+        .map(|u| format!("{u}/api/v1"))
+        .unwrap_or(args.firefly_cardano_url);
+    let firefly = FireflyCardanoClient::new(&base_url);
     firefly.deploy_contract(name, &contract).await?;
 
     Ok(())
