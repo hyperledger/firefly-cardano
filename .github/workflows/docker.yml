@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - main
-      - balius
 
 jobs:
   push_to_registry:
