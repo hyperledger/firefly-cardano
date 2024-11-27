@@ -2,6 +2,7 @@ use anyhow::{bail, Result};
 use reqwest::{Client, Response};
 use reqwest_websocket::{Message, RequestBuilderExt, WebSocket};
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
 
 pub struct FireflyCardanoClient {
     client: Client,
@@ -24,16 +25,44 @@ impl FireflyCardanoClient {
         Ok(body)
     }
 
-    pub async fn submit_transaction(&self, address: &str, transaction: &str) -> Result<String> {
-        let url = format!("{}/transactions", self.base_url);
-        let req = SubmitTransactionRequest {
+    pub async fn invoke_contract(
+        &self,
+        from: &str,
+        address: &str,
+        method: &str,
+        params: impl IntoIterator<Item = (&str, Value)>,
+    ) -> Result<Option<String>> {
+        let url = format!("{}/contracts/invoke", self.base_url);
+        let op_id = uuid::Uuid::new_v4().to_string();
+        let mut req = InvokeContractRequest {
             address: address.to_string(),
-            transaction: transaction.to_string(),
+            from: from.to_string(),
+            id: op_id.clone(),
+            method: ABIMethod {
+                name: method.to_string(),
+                params: vec![],
+            },
+            params: vec![],
         };
+        for (name, value) in params.into_iter() {
+            req.method.params.push(ABIParameter { name: name.into() });
+            req.params.push(value);
+        }
         let res = self.client.post(url).json(&req).send().await?;
+        Self::extract_error(res).await?;
+
+        // contracts are synchronous, so the result is already available
+        let url = format!("{}/transactions/{op_id}", self.base_url);
+        let res = self.client.get(url).send().await?;
         let res = Self::extract_error(res).await?;
-        let body: SubmitTransactionResponse = res.json().await?;
-        Ok(body.txid)
+        let body: OperationStatus = res.json().await?;
+        match body.status.as_str() {
+            "Succeeded" => Ok(body.transaction_hash),
+            other => bail!(
+                "Unexpected status {other}: {}",
+                body.error_message.unwrap_or_default()
+            ),
+        }
     }
 
     pub async fn create_stream(&self, settings: &StreamSettings) -> Result<String> {
@@ -140,14 +169,31 @@ pub struct FireflyWebSocketEvent {
 }
 
 #[derive(Serialize)]
-struct SubmitTransactionRequest {
+struct InvokeContractRequest {
     address: String,
-    transaction: String,
+    from: String,
+    id: String,
+    method: ABIMethod,
+    params: Vec<Value>,
+}
+
+#[derive(Serialize)]
+struct ABIMethod {
+    name: String,
+    params: Vec<ABIParameter>,
+}
+
+#[derive(Serialize)]
+struct ABIParameter {
+    name: String,
 }
 
 #[derive(Deserialize)]
-struct SubmitTransactionResponse {
-    txid: String,
+#[serde(rename_all = "camelCase")]
+struct OperationStatus {
+    status: String,
+    transaction_hash: Option<String>,
+    error_message: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]
