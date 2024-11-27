@@ -6,12 +6,12 @@ use axum::{
     Json,
 };
 use reqwest::StatusCode;
-use serde::Serialize;
 
 #[derive(Debug)]
 pub struct ApiError {
     status: StatusCode,
     message: String,
+    fields: serde_json::Map<String, serde_json::Value>,
 }
 
 impl ApiError {
@@ -19,6 +19,7 @@ impl ApiError {
         Self {
             status: status.into(),
             message: message.into(),
+            fields: serde_json::Map::new(),
         }
     }
     pub fn from_reqwest(err: reqwest::Error) -> Self {
@@ -39,6 +40,11 @@ impl ApiError {
     pub fn not_implemented(message: impl Into<String>) -> Self {
         Self::new(StatusCode::NOT_IMPLEMENTED, message)
     }
+    pub fn with_field(self, name: &str, value: impl Into<serde_json::Value>) -> Self {
+        let mut fields = self.fields;
+        fields.insert(name.into(), value.into());
+        Self { fields, ..self }
+    }
 }
 
 impl Display for ApiError {
@@ -47,16 +53,12 @@ impl Display for ApiError {
     }
 }
 
-#[derive(Serialize)]
-struct SerializableApiError {
-    message: String,
-}
 impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
-        let body = SerializableApiError {
-            message: self.message,
-        };
-        (self.status, Json(body)).into_response()
+        let mut fields = self.fields;
+        fields.insert("error".into(), self.message.into());
+        let value = serde_json::Value::Object(fields);
+        (self.status, Json(value)).into_response()
     }
 }
 
@@ -68,6 +70,7 @@ where
         Self {
             status: StatusCode::INTERNAL_SERVER_ERROR,
             message: format!("{:#}", value.into()),
+            fields: serde_json::Map::new(),
         }
     }
 }

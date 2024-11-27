@@ -1,0 +1,14 @@
+[package]
+name = "simple-tx"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
+
+[dependencies]
+balius-sdk = { git = "https://github.com/SupernaviX/balius.git", rev = "3a899f9" }
+pallas-addresses = "0.31.0"
+pallas-traverse = "0.31.0"
+serde = { version = "1", features = ["derive"] }
+
+[lib]
+crate-type = ["cdylib"]

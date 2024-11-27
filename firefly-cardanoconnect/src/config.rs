@@ -6,7 +6,9 @@ use firefly_server::{
 };
 use serde::Deserialize;
 
-use crate::{blockchain::BlockchainConfig, persistence::PersistenceConfig};
+use crate::{
+    blockchain::BlockchainConfig, contracts::ContractsConfig, persistence::PersistenceConfig,
+};
 
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
@@ -18,6 +20,7 @@ pub struct CardanoConnectConfig {
     pub log: LogConfig,
     #[serde(default)]
     pub persistence: PersistenceConfig,
+    pub contracts: Option<ContractsConfig>,
 }
 
 #[derive(Debug, Deserialize)]

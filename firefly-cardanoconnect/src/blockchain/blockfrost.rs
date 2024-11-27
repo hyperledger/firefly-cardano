@@ -1,11 +1,12 @@
 use std::{collections::VecDeque, time::Duration};
 
-use anyhow::{bail, Result};
+use anyhow::{bail, Context as _, Result};
 use async_trait::async_trait;
 use blockfrost::{
     BlockFrostSettings, BlockfrostAPI, BlockfrostError, BlockfrostResult, Pagination,
 };
 use blockfrost_openapi::models::BlockContent;
+use futures::future::try_join_all;
 use pallas_primitives::conway::Tx;
 use tokio::time;
 
@@ -272,12 +273,16 @@ async fn parse_block(api: &BlockfrostAPI, block: BlockContent) -> Result<BlockIn
 
     let transaction_hashes = api.blocks_txs(&block_hash, Pagination::all()).await?;
 
+    let tx_body_requests = transaction_hashes.iter().map(|hash| fetch_tx(api, hash));
+    let transactions = try_join_all(tx_body_requests).await?;
+
     let info = BlockInfo {
         block_hash,
         block_height,
         block_slot,
         parent_hash: block.previous_block,
         transaction_hashes,
+        transactions,
     };
     Ok(info)
 }
@@ -306,4 +311,13 @@ impl<T> BlockfrostResultExt for BlockfrostResult<T> {
             Ok(res) => Ok(Some(res)),
         }
     }
+}
+
+async fn fetch_tx(blockfrost: &BlockfrostAPI, hash: &str) -> Result<Vec<u8>> {
+    let tx_body = blockfrost
+        .transactions_cbor(hash)
+        .await
+        .context("could not fetch tx body")?;
+    let bytes = hex::decode(&tx_body.cbor)?;
+    Ok(bytes)
 }

@@ -1,5 +1,8 @@
 .direnv
 result*
 /target
+/wasm/**/target
 .envrc.local
 infra/wallet
+.vscode/*
+!.vscode/*.default

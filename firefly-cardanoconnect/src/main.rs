@@ -8,10 +8,13 @@ use anyhow::Result;
 use blockchain::BlockchainClient;
 use clap::Parser;
 use config::{load_config, CardanoConnectConfig};
+use contracts::ContractManager;
 use firefly_server::instrumentation;
+use operations::OperationsManager;
 use routes::{
     chain::get_chain_tip,
     health::health,
+    operations::{deploy_contract, get_operation_status, invoke_contract},
     streams::{
         create_listener, create_stream, delete_listener, delete_stream, get_listener, get_stream,
         list_listeners, list_streams, update_stream,
@@ -25,6 +28,8 @@ use tracing::instrument;
 
 mod blockchain;
 mod config;
+mod contracts;
+mod operations;
 mod persistence;
 mod routes;
 mod signer;
@@ -43,6 +48,7 @@ struct Args {
 #[derive(Clone)]
 struct AppState {
     pub blockchain: Arc<BlockchainClient>,
+    pub operations: Arc<OperationsManager>,
     pub signer: Arc<CardanoSigner>,
     pub stream_manager: Arc<StreamManager>,
 }
@@ -50,15 +56,34 @@ struct AppState {
 #[instrument(err(Debug))]
 async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<AppState> {
     let persistence = persistence::init(&config.persistence).await?;
+    let signer = Arc::new(CardanoSigner::new(config)?);
     let blockchain = if mock_data {
         Arc::new(BlockchainClient::mock().await)
     } else {
         Arc::new(BlockchainClient::new(config).await?)
     };
+    let contracts = if let Some(contracts) = &config.contracts {
+        let blockfrost_key = config
+            .connector
+            .blockchain
+            .blockfrost_key
+            .as_ref()
+            .map(|k| k.0.as_str());
+        Arc::new(ContractManager::new(contracts, blockfrost_key).await?)
+    } else {
+        Arc::new(ContractManager::none())
+    };
+    let operations = Arc::new(OperationsManager::new(
+        blockchain.clone(),
+        contracts,
+        persistence.clone(),
+        signer.clone(),
+    ));
 
     let state = AppState {
         blockchain: blockchain.clone(),
-        signer: Arc::new(CardanoSigner::new(config)?),
+        operations,
+        signer,
         stream_manager: Arc::new(StreamManager::new(persistence, blockchain).await?),
     };
 
@@ -77,7 +102,10 @@ async fn main() -> Result<()> {
 
     let router = ApiRouter::new()
         .api_route("/health", get(health))
+        .api_route("/contracts/deploy", post(deploy_contract))
+        .api_route("/contracts/invoke", post(invoke_contract))
         .api_route("/transactions", post(submit_transaction))
+        .api_route("/transactions/:id", get(get_operation_status))
         .api_route("/eventstreams", post(create_stream).get(list_streams))
         .api_route(
             "/eventstreams/:streamId",

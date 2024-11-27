@@ -1,7 +1,4 @@
-use std::path::PathBuf;
-
 use anyhow::{bail, Result};
-use build_tx::build_transaction;
 use clap::Parser;
 use firefly::{
     FireflyCardanoClient, FireflyWebSocketEventBatch, FireflyWebSocketRequest, ListenerFilter,
@@ -9,23 +6,16 @@ use firefly::{
 };
 use futures::{SinkExt, StreamExt};
 
-mod build_tx;
 mod firefly;
 
 #[derive(Parser)]
 struct Args {
-    #[arg(long)]
-    testnet_magic: u16,
-    #[arg(long)]
-    socket_path: PathBuf,
     #[arg(long)]
     addr_from: String,
     #[arg(long)]
     addr_to: String,
     #[arg(long)]
     amount: u64,
-    #[arg(long, default_value = "cardano-cli")]
-    cardano_cli: String,
     #[arg(long, default_value = "http://localhost:5018")]
     firefly_cardano_url: String,
     #[arg(long, default_value = "4")]
@@ -81,17 +71,26 @@ async fn main() -> Result<()> {
 
     let firefly = FireflyCardanoClient::new(&args.firefly_cardano_url);
 
-    let transaction = build_transaction(&args)?;
-    println!("transaction: {transaction}");
-
     // Before we submit our transaction, find the latest block.
     // If a transaction is submitted, it'll be included in a _later_ block,
     // so this lets us skip history
     let tip = firefly.get_chain_tip().await?;
 
-    let txid = firefly
-        .submit_transaction(&args.addr_from, &transaction)
-        .await?;
+    let Some(txid) = firefly
+        .invoke_contract(
+            &args.addr_from,
+            "simple-tx",
+            "send_ada",
+            [
+                ("fromAddress", args.addr_from.clone().into()),
+                ("toAddress", args.addr_to.clone().into()),
+                ("amount", args.amount.into()),
+            ],
+        )
+        .await?
+    else {
+        bail!("contract did not return transaction")
+    };
     println!("submitted transaction {txid}");
 
     let stream_topic = "firefly-cardano-demo";

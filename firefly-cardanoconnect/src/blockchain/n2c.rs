@@ -233,6 +233,12 @@ impl N2cChainSync {
 
         let block_hash = hex::encode(block.hash());
         let parent_hash = block.header().previous_hash().map(hex::encode);
+        let mut transaction_hashes = vec![];
+        let mut transactions = vec![];
+        for tx in block.txs() {
+            transaction_hashes.push(hex::encode(tx.hash()));
+            transactions.push(tx.encode());
+        }
         let transaction_hashes = block
             .txs()
             .iter()
@@ -244,6 +250,7 @@ impl N2cChainSync {
             block_hash,
             parent_hash,
             transaction_hashes,
+            transactions,
         })
     }
 }

@@ -1,14 +1,15 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::Result;
+use anyhow::{bail, Result};
 use async_trait::async_trait;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use rusqlite::{params, types::FromSql, Row, ToSql};
 use serde::Deserialize;
 use tokio_rusqlite::Connection;
 
-use crate::streams::{
-    BlockInfo, BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId,
+use crate::{
+    operations::{Operation, OperationId, OperationStatus},
+    streams::{BlockInfo, BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId},
 };
 
 use super::Persistence;
@@ -262,7 +263,7 @@ impl Persistence for SqlitePersistence {
         self.conn
             .call_unwrap(move |c| {
                 c.prepare_cached(
-                    "SELECT block_height, block_slot, block_hash, parent_hash, transaction_hashes, rolled_back
+                    "SELECT block_height, block_slot, block_hash, parent_hash, transaction_hashes, transactions, rolled_back
                     FROM block_records
                     WHERE listener_id = ?1
                     ORDER BY id",
@@ -285,8 +286,8 @@ impl Persistence for SqlitePersistence {
         self.conn.call_unwrap(move |c| {
             let tx = c.transaction()?;
             let mut insert = tx.prepare_cached(
-                "INSERT INTO block_records (listener_id, block_height, block_slot, block_hash, parent_hash, transaction_hashes, rolled_back)
-                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO block_records (listener_id, block_height, block_slot, block_hash, parent_hash, transaction_hashes, transactions, rolled_back)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
             )?;
 
             for record in new_records {
@@ -295,15 +296,65 @@ impl Persistence for SqlitePersistence {
                 let block_hash = record.block.block_hash.clone();
                 let parent_hash = record.block.parent_hash.clone();
                 let transaction_hashes = serde_json::to_string(&record.block.transaction_hashes)?;
+                let transactions = {
+                    let mut bytes = vec![];
+                    minicbor::encode(&record.block.transactions, &mut bytes).expect("infallible");
+                    bytes
+                };
                 let rolled_back = record.rolled_back;
 
-                insert.execute(params![listener_id, block_height, block_slot, block_hash, parent_hash, transaction_hashes, rolled_back])?;
+                insert.execute(params![listener_id, block_height, block_slot, block_hash, parent_hash, transaction_hashes, transactions, rolled_back])?;
             }
 
             drop(insert);
             tx.commit()?;
             Ok(())
         }).await
+    }
+
+    async fn write_operation(&self, op: &Operation) -> ApiResult<()> {
+        let op = op.clone();
+        self.conn
+            .call_unwrap(move |c| {
+                let status = op.status.name();
+                let error_message = op.status.error_message();
+                c.prepare_cached(
+                    "INSERT INTO operations (id, status, error_message, tx_id)
+                    VALUES (?1, ?2, ?3, ?4)
+                    ON CONFLICT(id) DO UPDATE SET
+                        status=excluded.status,
+                        error_message=excluded.error_message,
+                        tx_id=excluded.tx_id",
+                )?
+                .execute(params![
+                    op.id.to_string(),
+                    status,
+                    error_message,
+                    op.tx_id,
+                ])?;
+                Ok(())
+            })
+            .await
+    }
+
+    async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>> {
+        let id = id.clone();
+        self.conn
+            .call_unwrap(move |c| {
+                let Some(op) = c
+                    .prepare_cached(
+                        "SELECT id, status, error_message, tx_id
+                        FROM operations
+                        WHERE id = ?1",
+                    )?
+                    .query_and_then([id.to_string()], parse_operation)?
+                    .next()
+                else {
+                    return Ok(None);
+                };
+                Ok(Some(op?))
+            })
+            .await
     }
 }
 
@@ -349,7 +400,14 @@ fn parse_block_record(row: &Row) -> Result<BlockRecord> {
     let block_slot: Option<u64> = row.get("block_slot")?;
     let block_hash: String = row.get("block_hash")?;
     let parent_hash: Option<String> = row.get("parent_hash")?;
-    let transaction_hashes: String = row.get("transaction_hashes")?;
+    let transaction_hashes = {
+        let raw: String = row.get("transaction_hashes")?;
+        serde_json::from_str(&raw)?
+    };
+    let transactions = {
+        let raw: Vec<u8> = row.get("transactions")?;
+        minicbor::decode(&raw)?
+    };
     let rolled_back: bool = row.get("rolled_back")?;
     Ok(BlockRecord {
         block: BlockInfo {
@@ -357,9 +415,30 @@ fn parse_block_record(row: &Row) -> Result<BlockRecord> {
             block_slot,
             block_hash,
             parent_hash,
-            transaction_hashes: serde_json::from_str(&transaction_hashes)?,
+            transaction_hashes,
+            transactions,
         },
         rolled_back,
+    })
+}
+
+fn parse_operation(row: &Row) -> Result<Operation> {
+    let id: String = row.get("id")?;
+    let error_message: Option<String> = row.get("error_message")?;
+    let status = match error_message {
+        Some(error) => OperationStatus::Failed(error),
+        None => match row.get::<&str, String>("status")?.as_str() {
+            "Succeeded" => OperationStatus::Succeeded,
+            "Pending" => OperationStatus::Pending,
+            "Failed" => OperationStatus::Failed("".into()),
+            other => bail!("unrecognized status {other}"),
+        },
+    };
+    let tx_id: Option<String> = row.get("tx_id")?;
+    Ok(Operation {
+        id: id.into(),
+        status,
+        tx_id,
     })
 }
 

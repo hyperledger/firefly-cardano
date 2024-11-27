@@ -9,12 +9,14 @@ aide = { version = "0.13", features = ["axum"] }
 anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.7", features = ["macros", "ws"] }
-blockfrost = { git = "https://github.com/blockfrost/blockfrost-rust.git", rev = "14e22b5", default-features = false, features = ["rustls-tls"] }
+balius-runtime = { git = "https://github.com/SupernaviX/balius.git", rev = "3a899f9" }
+blockfrost = { version = "1", default-features = false, features = ["rustls-tls"] }
 blockfrost-openapi = "0.1.69"
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 dashmap = "6"
 futures = "0.3"
+pallas-addresses = "0.31"
 pallas-codec = "0.31"
 pallas-crypto = "0.31"
 pallas-primitives = "0.31"
