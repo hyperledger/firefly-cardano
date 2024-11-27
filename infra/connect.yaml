@@ -3,8 +3,10 @@ log:
 connector:
   signerUrl: http://firefly-cardanosigner:8555
   blockchain:
-    socket: /ipc/node.socket
     network: preview
+contracts:
+  componentsPath: /contracts/components
+  storePath: /contracts/store.redb
 persistence:
   type: sqlite
   path: /db/db.sqlite3

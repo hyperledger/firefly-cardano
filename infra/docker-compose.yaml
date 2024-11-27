@@ -10,6 +10,7 @@ services:
       - 5018:5018
     volumes:
       - ./ipc:/ipc
+      - connect-contracts:/contracts
       - connect-db:/db
       - ./connect.yaml:/app/config.yaml
 
@@ -25,4 +26,5 @@ services:
       - ./signer.yaml:/app/config.yaml
 
 volumes:
+  connect-contracts:
   connect-db:
