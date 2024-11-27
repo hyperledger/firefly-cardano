@@ -105,7 +105,7 @@ async fn main() -> Result<()> {
         .api_route("/contracts/deploy", post(deploy_contract))
         .api_route("/contracts/invoke", post(invoke_contract))
         .api_route("/transactions", post(submit_transaction))
-        .api_route("/transactions/id", get(get_operation_status))
+        .api_route("/transactions/:id", get(get_operation_status))
         .api_route("/eventstreams", post(create_stream).get(list_streams))
         .api_route(
             "/eventstreams/:streamId",
