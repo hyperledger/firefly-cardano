@@ -34,7 +34,9 @@ impl InputExpr for CoinSelectionInput {
 
         let mut inputs = vec![];
         let mut lovelace_so_far = 0;
-        for (ref_, txo) in utxos.refs().zip(utxos.txos()) {
+        let mut pairs: Vec<_> = utxos.iter().collect();
+        pairs.sort_by_key(|(ref_, _)| (ref_.hash, ref_.index));
+        for (ref_, txo) in pairs {
             let coin = txo.value().coin();
             if coin == 0 {
                 continue;
