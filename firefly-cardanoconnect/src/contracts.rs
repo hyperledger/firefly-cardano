@@ -10,6 +10,8 @@ use tokio::{
     sync::{Mutex, RwLock},
 };
 
+use crate::blockfrost::BlockfrostClient;
+
 mod ledger;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -26,9 +28,12 @@ pub struct ContractManager {
 }
 
 impl ContractManager {
-    pub async fn new(config: &ContractsConfig, blockfrost_key: Option<&str>) -> Result<Self> {
+    pub async fn new(
+        config: &ContractsConfig,
+        blockfrost: Option<BlockfrostClient>,
+    ) -> Result<Self> {
         fs::create_dir_all(&config.components_path).await?;
-        let runtime = Self::new_runtime(config, blockfrost_key).await?;
+        let runtime = Self::new_runtime(config, blockfrost).await?;
         Ok(Self {
             components_path: Some(config.components_path.clone()),
             runtime: Some(RwLock::new(runtime)),
@@ -76,12 +81,12 @@ impl ContractManager {
 
     async fn new_runtime(
         config: &ContractsConfig,
-        blockfrost_key: Option<&str>,
+        blockfrost: Option<BlockfrostClient>,
     ) -> Result<Runtime> {
         let store = Store::open(&config.store_path, config.cache_size)?;
         let mut runtime_builder = Runtime::builder(store);
-        if let Some(key) = blockfrost_key {
-            let ledger = BlockfrostLedger::new(key);
+        if let Some(client) = blockfrost {
+            let ledger = BlockfrostLedger::new(client);
             runtime_builder =
                 runtime_builder.with_ledger(Ledger::Custom(Arc::new(Mutex::new(ledger))))
         }

@@ -2,18 +2,17 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use async_trait::async_trait;
 use balius_runtime::ledgers::{CustomLedger, LedgerError, TxoRef, Utxo, UtxoPage, UtxoPattern};
-use blockfrost::{BlockFrostSettings, BlockfrostAPI, Pagination};
 use pallas_traverse::MultiEraTx;
 
+use crate::blockfrost::{BlockfrostClient, Pagination};
+
 pub struct BlockfrostLedger {
-    client: BlockfrostAPI,
+    client: BlockfrostClient,
 }
 
 impl BlockfrostLedger {
-    pub fn new(key: &str) -> Self {
-        Self {
-            client: BlockfrostAPI::new(key, BlockFrostSettings::new()),
-        }
+    pub fn new(client: BlockfrostClient) -> Self {
+        Self { client }
     }
 }
 
@@ -100,11 +99,11 @@ impl CustomLedger for BlockfrostLedger {
 }
 
 struct TxDict<'a> {
-    client: &'a mut BlockfrostAPI,
+    client: &'a mut BlockfrostClient,
     txs: HashMap<String, Vec<u8>>,
 }
 impl<'a> TxDict<'a> {
-    fn new(client: &'a mut BlockfrostAPI) -> Self {
+    fn new(client: &'a mut BlockfrostClient) -> Self {
         Self {
             client,
             txs: HashMap::new(),

@@ -6,6 +6,7 @@ use aide::axum::{
 };
 use anyhow::Result;
 use blockchain::BlockchainClient;
+use blockfrost::BlockfrostClient;
 use clap::Parser;
 use config::{load_config, CardanoConnectConfig};
 use contracts::ContractManager;
@@ -27,6 +28,7 @@ use streams::StreamManager;
 use tracing::instrument;
 
 mod blockchain;
+mod blockfrost;
 mod config;
 mod contracts;
 mod operations;
@@ -55,21 +57,21 @@ struct AppState {
 
 #[instrument(err(Debug))]
 async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<AppState> {
+    let blockfrost = config
+        .connector
+        .blockchain
+        .blockfrost_key
+        .as_ref()
+        .map(|k| BlockfrostClient::new(&k.0));
     let persistence = persistence::init(&config.persistence).await?;
     let signer = Arc::new(CardanoSigner::new(config)?);
     let blockchain = if mock_data {
         Arc::new(BlockchainClient::mock().await)
     } else {
-        Arc::new(BlockchainClient::new(config).await?)
+        Arc::new(BlockchainClient::new(config, blockfrost.clone()).await?)
     };
     let contracts = if let Some(contracts) = &config.contracts {
-        let blockfrost_key = config
-            .connector
-            .blockchain
-            .blockfrost_key
-            .as_ref()
-            .map(|k| k.0.as_str());
-        Arc::new(ContractManager::new(contracts, blockfrost_key).await?)
+        Arc::new(ContractManager::new(contracts, blockfrost).await?)
     } else {
         Arc::new(ContractManager::none())
     };

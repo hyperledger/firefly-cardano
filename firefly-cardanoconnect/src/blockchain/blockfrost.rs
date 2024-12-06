@@ -2,27 +2,27 @@ use std::{collections::VecDeque, time::Duration};
 
 use anyhow::{bail, Context as _, Result};
 use async_trait::async_trait;
-use blockfrost::{
-    BlockFrostSettings, BlockfrostAPI, BlockfrostError, BlockfrostResult, Pagination,
-};
 use blockfrost_openapi::models::BlockContent;
 use futures::future::try_join_all;
 use pallas_primitives::conway::Tx;
 use tokio::time;
 
-use crate::streams::{BlockInfo, BlockReference};
+use crate::{
+    blockfrost::{BlockfrostClient, Pagination},
+    streams::{BlockInfo, BlockReference},
+};
 
 use super::{ChainSyncClient, RequestNextResponse};
 
 pub struct Blockfrost {
-    api: BlockfrostAPI,
+    client: BlockfrostClient,
     genesis_hash: String,
 }
 
 impl Blockfrost {
-    pub fn new(blockfrost_key: &str, genesis_hash: &str) -> Self {
+    pub fn new(client: BlockfrostClient, genesis_hash: &str) -> Self {
         Self {
-            api: BlockfrostAPI::new(blockfrost_key, BlockFrostSettings::new()),
+            client,
             genesis_hash: genesis_hash.to_string(),
         }
     }
@@ -33,16 +33,16 @@ impl Blockfrost {
             minicbor::encode(transaction, &mut bytes).expect("infallible");
             bytes
         };
-        Ok(self.api.transactions_submit(transaction_data).await?)
+        self.client.transactions_submit(transaction_data).await
     }
 
     pub async fn open_chainsync(&self) -> Result<BlockfrostChainSync> {
-        BlockfrostChainSync::new(self.api.clone(), self.genesis_hash.clone()).await
+        BlockfrostChainSync::new(self.client.clone(), self.genesis_hash.clone()).await
     }
 }
 
 pub struct BlockfrostChainSync {
-    api: BlockfrostAPI,
+    client: BlockfrostClient,
     tip: BlockContent,
     prev: VecDeque<Point>,
     head: Point,
@@ -81,7 +81,7 @@ impl ChainSyncClient for BlockfrostChainSync {
             };
 
             let history = self
-                .api
+                .client
                 .blocks_previous(
                     &point.hash,
                     Pagination {
@@ -111,15 +111,15 @@ impl ChainSyncClient for BlockfrostChainSync {
             BlockReference::Origin => (None, &self.genesis_hash),
             BlockReference::Point(number, hash) => (*number, hash),
         };
-        request_block(&self.api, requested_hash, requested_slot).await
+        request_block(&self.client, requested_hash, requested_slot).await
     }
 }
 
 impl BlockfrostChainSync {
-    async fn new(api: BlockfrostAPI, genesis_hash: String) -> Result<Self> {
-        let tip = api.blocks_latest().await?;
+    async fn new(client: BlockfrostClient, genesis_hash: String) -> Result<Self> {
+        let tip = client.blocks_latest().await?;
         Ok(Self {
-            api,
+            client,
             tip,
             prev: VecDeque::new(),
             head: Point {
@@ -134,10 +134,9 @@ impl BlockfrostChainSync {
     async fn fetch_next(&mut self) -> Result<Option<BlockInfo>> {
         while self.next.is_empty() {
             let Some(next_blocks) = self
-                .api
-                .blocks_next(&self.head.hash, Pagination::default())
-                .await
-                .none_on_404()?
+                .client
+                .try_blocks_next(&self.head.hash, Pagination::default())
+                .await?
             else {
                 // our head is gone, time to roll back
                 return Ok(None);
@@ -161,7 +160,7 @@ impl BlockfrostChainSync {
 
         // We definitely have the next block to return now
         let next = self.next.pop_front().unwrap();
-        let next = parse_block(&self.api, next).await?;
+        let next = parse_block(&self.client, next).await?;
 
         // update prev to point to the next
         self.prev.push_back(self.head.clone());
@@ -180,7 +179,7 @@ impl BlockfrostChainSync {
         };
 
         let mut new_history = self
-            .api
+            .client
             .blocks_next(&oldest.hash, Pagination::default())
             .await?;
         // find where history diverged
@@ -215,7 +214,7 @@ impl BlockfrostChainSync {
             BlockReference::Origin => (None, &self.genesis_hash),
             BlockReference::Point(number, hash) => (*number, hash),
         };
-        let Some(block) = self.api.try_fetch_block(requested_hash).await? else {
+        let Some(block) = self.client.try_blocks_by_id(requested_hash).await? else {
             return Ok(None);
         };
 
@@ -239,11 +238,11 @@ impl Point {
 }
 
 pub async fn request_block(
-    api: &BlockfrostAPI,
+    client: &BlockfrostClient,
     hash: &str,
     slot: Option<u64>,
 ) -> Result<Option<BlockInfo>> {
-    let Some(block) = api.try_fetch_block(hash).await? else {
+    let Some(block) = client.try_blocks_by_id(hash).await? else {
         return Ok(None);
     };
 
@@ -251,7 +250,7 @@ pub async fn request_block(
         bail!("requested_block returned a block in the wrong slot");
     }
 
-    Ok(Some(parse_block(api, block).await?))
+    Ok(Some(parse_block(client, block).await?))
 }
 
 fn parse_point(block: &BlockContent) -> Point {
@@ -266,14 +265,14 @@ fn parse_reference(block: &BlockContent) -> BlockReference {
     BlockReference::Point(point.slot, point.hash)
 }
 
-async fn parse_block(api: &BlockfrostAPI, block: BlockContent) -> Result<BlockInfo> {
+async fn parse_block(client: &BlockfrostClient, block: BlockContent) -> Result<BlockInfo> {
     let block_hash = block.hash;
     let block_height = block.height.map(|h| h as u64);
     let block_slot = block.slot.map(|s| s as u64);
 
-    let transaction_hashes = api.blocks_txs(&block_hash, Pagination::all()).await?;
+    let transaction_hashes = client.blocks_txs(&block_hash).await?;
 
-    let tx_body_requests = transaction_hashes.iter().map(|hash| fetch_tx(api, hash));
+    let tx_body_requests = transaction_hashes.iter().map(|hash| fetch_tx(client, hash));
     let transactions = try_join_all(tx_body_requests).await?;
 
     let info = BlockInfo {
@@ -287,33 +286,7 @@ async fn parse_block(api: &BlockfrostAPI, block: BlockContent) -> Result<BlockIn
     Ok(info)
 }
 
-trait BlockfrostAPIExt {
-    async fn try_fetch_block(&self, hash: &str) -> Result<Option<BlockContent>>;
-}
-
-impl BlockfrostAPIExt for BlockfrostAPI {
-    async fn try_fetch_block(&self, hash: &str) -> Result<Option<BlockContent>> {
-        self.blocks_by_id(hash).await.none_on_404()
-    }
-}
-
-trait BlockfrostResultExt {
-    type T;
-    fn none_on_404(self) -> Result<Option<Self::T>>;
-}
-
-impl<T> BlockfrostResultExt for BlockfrostResult<T> {
-    type T = T;
-    fn none_on_404(self) -> Result<Option<Self::T>> {
-        match self {
-            Err(BlockfrostError::Response { reason, .. }) if reason.status_code == 404 => Ok(None),
-            Err(error) => Err(error.into()),
-            Ok(res) => Ok(Some(res)),
-        }
-    }
-}
-
-async fn fetch_tx(blockfrost: &BlockfrostAPI, hash: &str) -> Result<Vec<u8>> {
+async fn fetch_tx(blockfrost: &BlockfrostClient, hash: &str) -> Result<Vec<u8>> {
     let tx_body = blockfrost
         .transactions_cbor(hash)
         .await

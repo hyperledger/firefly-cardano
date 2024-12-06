@@ -5,7 +5,6 @@ use std::{
 
 use anyhow::{anyhow, bail, Context, Result};
 use async_trait::async_trait;
-use blockfrost::{BlockFrostSettings, BlockfrostAPI};
 use pallas_crypto::hash::Hasher;
 use pallas_network::{
     facades::NodeClient,
@@ -21,7 +20,7 @@ use tokio::time;
 use tracing::warn;
 
 use crate::{
-    config::Secret,
+    blockfrost::BlockfrostClient,
     streams::{BlockInfo, BlockReference},
     utils::LazyInit,
 };
@@ -33,7 +32,7 @@ pub struct NodeToClient {
     magic: u64,
     genesis_hash: String,
     genesis_values: GenesisValues,
-    blockfrost: Option<BlockfrostAPI>,
+    blockfrost: Option<BlockfrostClient>,
     client: LazyInit<NodeClient>,
 }
 
@@ -43,11 +42,9 @@ impl NodeToClient {
         magic: u64,
         genesis_hash: &str,
         genesis_values: GenesisValues,
-        blockfrost_key: Option<&Secret<String>>,
+        blockfrost: Option<BlockfrostClient>,
     ) -> Self {
         let client = Self::connect(socket, magic);
-        let blockfrost =
-            blockfrost_key.map(|key| BlockfrostAPI::new(&key.0, BlockFrostSettings::new()));
         let mut result = Self {
             socket: socket.to_path_buf(),
             magic,
@@ -140,7 +137,7 @@ impl NodeToClient {
 
 pub struct N2cChainSync {
     client: LazyInit<NodeClient>,
-    blockfrost: BlockfrostAPI,
+    blockfrost: BlockfrostClient,
     genesis_hash: String,
     genesis_values: GenesisValues,
 }

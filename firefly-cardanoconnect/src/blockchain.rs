@@ -1,6 +1,7 @@
 use std::path::PathBuf;
 
 use crate::{
+    blockfrost::BlockfrostClient,
     config::{CardanoConnectConfig, Secret},
     streams::{BlockInfo, BlockReference},
 };
@@ -80,23 +81,26 @@ pub struct BlockchainClient {
 }
 
 impl BlockchainClient {
-    pub async fn new(config: &CardanoConnectConfig) -> Result<Self> {
+    pub async fn new(
+        config: &CardanoConnectConfig,
+        blockfrost: Option<BlockfrostClient>,
+    ) -> Result<Self> {
         let blockchain = &config.connector.blockchain;
 
-        let client = match (&blockchain.socket, &blockchain.blockfrost_key) {
-            (Some(socket), key) => {
+        let client = match (&blockchain.socket, blockfrost) {
+            (Some(socket), blockfrost) => {
                 let client = NodeToClient::new(
                     socket,
                     blockchain.magic(),
                     blockchain.genesis_hash(),
                     blockchain.genesis_values(),
-                    key.as_ref(),
+                    blockfrost,
                 )
                 .await;
                 ClientImpl::NodeToClient(RwLock::new(client))
             }
-            (None, Some(key)) => {
-                let client = Blockfrost::new(&key.0, blockchain.genesis_hash());
+            (None, Some(blockfrost)) => {
+                let client = Blockfrost::new(blockfrost, blockchain.genesis_hash());
                 ClientImpl::Blockfrost(client)
             }
             (None, None) => bail!("Missing blockchain configuration"),
