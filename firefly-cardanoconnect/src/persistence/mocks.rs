@@ -110,6 +110,7 @@ impl Persistence for MockPersistence {
             return Ok(());
         };
         listeners.retain(|it| it.id != *listener_id);
+        self.all_blocks.remove(listener_id);
 
         Ok(())
     }

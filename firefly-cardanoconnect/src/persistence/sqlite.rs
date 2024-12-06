@@ -190,6 +190,8 @@ impl Persistence for SqlitePersistence {
             .call_unwrap(move |c| {
                 c.prepare_cached("DELETE FROM listeners WHERE id = ?1 AND stream_id = ?2")?
                     .execute([listener_id.to_string(), stream_id.to_string()])?;
+                c.prepare_cached("DELETE FROM block_records WHERE listener_id = ?1")?
+                    .execute([listener_id.to_string()])?;
                 Ok(())
             })
             .await
