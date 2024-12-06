@@ -308,7 +308,7 @@ dependencies = [
 [[package]]
 name = "balius-runtime"
 version = "0.1.0"
-source = "git+https://github.com/SupernaviX/balius.git?rev=3a899f9#3a899f9f1ed839a10719a441469a433f243520f4"
+source = "git+https://github.com/txpipe/balius.git?rev=a72601f#a72601f5616846f4dd4bccbdb0832e10082fb253"
 dependencies = [
  "async-trait",
  "flate2",
@@ -1091,6 +1091,8 @@ dependencies = [
  "futures",
  "hex",
  "minicbor",
+ "num-rational",
+ "num-traits",
  "pallas-addresses",
  "pallas-codec",
  "pallas-crypto",
@@ -1109,6 +1111,7 @@ dependencies = [
  "tokio-rusqlite",
  "tracing",
  "ulid",
+ "utxorpc-spec 0.12.0",
 ]
 
 [[package]]

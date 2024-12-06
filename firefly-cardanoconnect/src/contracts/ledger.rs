@@ -2,7 +2,12 @@ use std::collections::{hash_map::Entry, HashMap};
 
 use async_trait::async_trait;
 use balius_runtime::ledgers::{CustomLedger, LedgerError, TxoRef, Utxo, UtxoPage, UtxoPattern};
+use num_rational::Rational32;
+use num_traits::FromPrimitive as _;
 use pallas_traverse::MultiEraTx;
+use utxorpc_spec::utxorpc::v1alpha::cardano::{
+    CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion, RationalNumber,
+};
 
 use crate::blockfrost::{BlockfrostClient, Pagination};
 
@@ -33,6 +38,75 @@ impl CustomLedger for BlockfrostLedger {
             });
         }
         Ok(result)
+    }
+
+    async fn read_params(&mut self) -> Result<Vec<u8>, LedgerError> {
+        let raw_params = self
+            .client
+            .epochs_latest_parameters()
+            .await
+            .map_err(|e| LedgerError::Upstream(e.to_string()))?;
+        let params = PParams {
+            coins_per_utxo_byte: raw_params
+                .coins_per_utxo_size
+                .map(|v| v.parse().unwrap())
+                .unwrap_or_default(),
+            max_tx_size: raw_params.max_tx_size as u64,
+            min_fee_coefficient: raw_params.min_fee_a as u64,
+            min_fee_constant: raw_params.min_fee_b as u64,
+            max_block_body_size: raw_params.max_block_size as u64,
+            max_block_header_size: raw_params.max_block_header_size as u64,
+            stake_key_deposit: raw_params.key_deposit.parse().unwrap(),
+            pool_deposit: raw_params.pool_deposit.parse().unwrap(),
+            pool_retirement_epoch_bound: raw_params.e_max as u64,
+            desired_number_of_pools: raw_params.n_opt as u64,
+            pool_influence: Some(f64_to_rational(raw_params.a0)),
+            monetary_expansion: Some(f64_to_rational(raw_params.rho)),
+            treasury_expansion: Some(f64_to_rational(raw_params.tau)),
+            min_pool_cost: raw_params.min_pool_cost.parse().unwrap(),
+            protocol_version: Some(ProtocolVersion {
+                major: raw_params.protocol_major_ver as u32,
+                minor: raw_params.protocol_minor_ver as u32,
+            }),
+            max_value_size: raw_params
+                .max_val_size
+                .map(|v| v.parse().unwrap())
+                .unwrap_or_default(),
+            collateral_percentage: raw_params
+                .collateral_percent
+                .map(|v| v as u64)
+                .unwrap_or_default(),
+            max_collateral_inputs: raw_params
+                .max_collateral_inputs
+                .map(|v| v as u64)
+                .unwrap_or_default(),
+            cost_models: raw_params.cost_models_raw.flatten().map(|models| {
+                let extract_model = |name| {
+                    let val = models.get(name)?;
+                    let array = val.as_array()?;
+                    let values = array.iter().map(|v| v.as_i64().unwrap()).collect();
+                    Some(CostModel { values })
+                };
+                CostModels {
+                    plutus_v1: extract_model("PlutusV1"),
+                    plutus_v2: extract_model("PlutusV2"),
+                    plutus_v3: extract_model("PlutusV3"),
+                }
+            }),
+            prices: Some(ExPrices {
+                steps: raw_params.price_step.map(f64_to_rational),
+                memory: raw_params.price_mem.map(f64_to_rational),
+            }),
+            max_execution_units_per_transaction: ex_units(
+                raw_params.max_tx_ex_steps,
+                raw_params.max_tx_ex_mem,
+            ),
+            max_execution_units_per_block: ex_units(
+                raw_params.max_block_ex_steps,
+                raw_params.max_block_ex_mem,
+            ),
+        };
+        Ok(serde_json::to_vec(&params).unwrap())
     }
 
     async fn search_utxos(
@@ -130,4 +204,19 @@ impl<'a> TxDict<'a> {
     fn decode_tx(bytes: &[u8]) -> Result<MultiEraTx<'_>, LedgerError> {
         MultiEraTx::decode(bytes).map_err(|e| LedgerError::Internal(e.to_string()))
     }
+}
+
+fn f64_to_rational(value: f64) -> RationalNumber {
+    let ratio = Rational32::from_f64(value).unwrap();
+    RationalNumber {
+        numerator: *ratio.numer(),
+        denominator: *ratio.denom() as u32,
+    }
+}
+
+fn ex_units(step: Option<String>, mem: Option<String>) -> Option<ExUnits> {
+    Some(ExUnits {
+        steps: step?.parse().ok()?,
+        memory: mem?.parse().ok()?,
+    })
 }

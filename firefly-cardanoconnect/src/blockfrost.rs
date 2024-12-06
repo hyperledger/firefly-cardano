@@ -1,7 +1,9 @@
 use anyhow::Result;
 pub use blockfrost::Pagination;
 use blockfrost::{BlockFrostSettings, BlockfrostAPI, BlockfrostError, BlockfrostResult};
-pub use blockfrost_openapi::models::{AddressUtxoContentInner, BlockContent, TxContentCbor};
+pub use blockfrost_openapi::models::{
+    AddressUtxoContentInner, BlockContent, EpochParamContent, TxContentCbor,
+};
 
 #[derive(Debug, Clone)]
 pub struct BlockfrostClient {
@@ -51,6 +53,10 @@ impl BlockfrostClient {
     pub async fn blocks_txs(&self, hash: &str) -> Result<Vec<String>> {
         let pagination = Pagination::all();
         Ok(self.api.blocks_txs(hash, pagination).await?)
+    }
+
+    pub async fn epochs_latest_parameters(&self) -> Result<EpochParamContent> {
+        Ok(self.api.epochs_latest_parameters().await?)
     }
 
     pub async fn transactions_cbor(&self, hash: &str) -> Result<TxContentCbor> {
