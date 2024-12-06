@@ -71,7 +71,7 @@ impl Persistence for MockPersistence {
 
         let streams = all_streams
             .iter()
-            .filter(|s| !after.as_ref().is_some_and(|v| *v >= s.id))
+            .filter(|s| after.as_ref().is_none_or(|v| *v < s.id))
             .take(limit.unwrap_or(usize::MAX))
             .cloned()
             .collect();
@@ -125,7 +125,7 @@ impl Persistence for MockPersistence {
         };
         let listeners = stream_listeners
             .iter()
-            .filter(|l| !after.as_ref().is_some_and(|v| *v >= l.id))
+            .filter(|l| after.as_ref().is_none_or(|v| *v < l.id))
             .take(limit.unwrap_or(usize::MAX))
             .cloned()
             .collect();

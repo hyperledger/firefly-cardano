@@ -135,8 +135,8 @@ impl ChainListenerImpl {
             .iter()
             .rev()
             .take_while(|b| {
-                !b.block_slot
-                    .is_some_and(|b| target_slot.is_some_and(|t| b < t))
+                b.block_slot
+                    .is_none_or(|b| target_slot.is_none_or(|t| b >= t))
             })
             .find(|b| b.block_hash == target_hash)
             .cloned()
