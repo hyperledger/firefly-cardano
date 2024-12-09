@@ -13,7 +13,7 @@ use serde::{Deserialize, Serialize};
 use tracing::{error, instrument, warn, Level};
 
 use crate::{
-    operations::Operation,
+    operations::{Operation, OperationStatus},
     streams::{Batch, StreamMessage},
     AppState,
 };
@@ -93,7 +93,11 @@ async fn send_operation(socket: &mut WebSocket, op: Operation) -> Result<()> {
     let operation = OutgoingOperation {
         headers: OperationHeaders {
             request_id: op.id.to_string(),
-            type_: op.status.name().to_string(),
+            type_: match op.status {
+                OperationStatus::Succeeded => "TransactionSuccess".into(),
+                OperationStatus::Pending => "TransactionUpdate".into(),
+                OperationStatus::Failed(_) => "TransactionFailed".into(),
+            },
         },
         transaction_hash: op.tx_id.clone(),
         error_message: op.status.error_message().map(|m| m.to_string()),
