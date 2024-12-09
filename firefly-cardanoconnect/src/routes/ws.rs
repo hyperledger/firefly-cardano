@@ -12,7 +12,11 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use tracing::{error, instrument, warn, Level};
 
-use crate::AppState;
+use crate::{
+    operations::Operation,
+    streams::{Batch, StreamMessage},
+    AppState,
+};
 
 async fn handle_socket(
     AppState { stream_manager, .. }: AppState,
@@ -28,56 +32,76 @@ async fn handle_socket(
     };
     let mut subscription = stream_manager.subscribe(&topic).await?;
 
-    while let Some(batch) = subscription.recv().await {
-        let outgoing_batch = OutgoingBatch {
-            batch_number: batch.batch_number,
-            events: batch
-                .events
-                .iter()
-                .map(|e| Event {
-                    listener_id: Some(e.id.listener_id.clone().into()),
-                    signature: e.id.signature.clone(),
-                    block_number: e.id.block_number,
-                    block_hash: e.id.block_hash.clone(),
-                    transaction_hash: e.id.transaction_hash.clone(),
-                    transaction_index: e.id.transaction_index,
-                    log_index: e.id.log_index,
-                    timestamp: e.id.timestamp.map(systemtime_to_rfc3339),
-                    data: e.data.clone(),
-                })
-                .collect(),
-        };
-        let outgoing_json = serde_json::to_string(&outgoing_batch)?;
-        socket.send(Message::Text(outgoing_json)).await?;
-
-        let Some(response) = read_message(&mut socket).await? else {
-            bail!("socket was closed after sending a batch");
-        };
-        match response {
-            IncomingMessage::Ack(ack) => {
-                if ack.topic != topic {
-                    bail!("client acked messages from the wrong topic");
-                }
-                if ack.batch_number != batch.batch_number {
-                    bail!("client acked the wrong batch");
-                }
-                batch.ack();
-            }
-            IncomingMessage::Error(err) => {
-                if err.topic != topic {
-                    bail!("client acked messages from the wrong topic");
-                }
-                error!("client couldn't process batch: {}", err.message);
-                continue;
-            }
-            other => {
-                bail!("unexpected response to batch! {:?}", other);
-            }
+    while let Some(message) = subscription.recv().await {
+        match message {
+            StreamMessage::Batch(batch) => send_batch(&mut socket, &topic, batch).await?,
+            StreamMessage::Operation(op) => send_operation(&mut socket, op).await?,
         }
     }
     Ok(())
 }
 
+async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result<()> {
+    let outgoing_batch = OutgoingBatch {
+        batch_number: batch.batch_number,
+        events: batch
+            .events
+            .iter()
+            .map(|e| Event {
+                listener_id: Some(e.id.listener_id.clone().into()),
+                signature: e.id.signature.clone(),
+                block_number: e.id.block_number,
+                block_hash: e.id.block_hash.clone(),
+                transaction_hash: e.id.transaction_hash.clone(),
+                transaction_index: e.id.transaction_index,
+                log_index: e.id.log_index,
+                timestamp: e.id.timestamp.map(systemtime_to_rfc3339),
+                data: e.data.clone(),
+            })
+            .collect(),
+    };
+    let outgoing_json = serde_json::to_string(&outgoing_batch)?;
+    socket.send(Message::Text(outgoing_json)).await?;
+
+    let Some(response) = read_message(socket).await? else {
+        bail!("socket was closed after sending a batch");
+    };
+    match response {
+        IncomingMessage::Ack(ack) => {
+            if ack.topic != topic {
+                bail!("client acked messages from the wrong topic");
+            }
+            if ack.batch_number != batch.batch_number {
+                bail!("client acked the wrong batch");
+            }
+            batch.ack();
+        }
+        IncomingMessage::Error(err) => {
+            if err.topic != topic {
+                bail!("client acked messages from the wrong topic");
+            }
+            error!("client couldn't process batch: {}", err.message);
+        }
+        other => {
+            bail!("unexpected response to batch! {:?}", other);
+        }
+    }
+    Ok(())
+}
+
+async fn send_operation(socket: &mut WebSocket, op: Operation) -> Result<()> {
+    let operation = OutgoingOperation {
+        headers: OperationHeaders {
+            request_id: op.id.to_string(),
+            type_: op.status.name().to_string(),
+        },
+        transaction_hash: op.tx_id.clone(),
+        error_message: op.status.error_message().map(|m| m.to_string()),
+    };
+    let outgoing_json = serde_json::to_string(&operation)?;
+    socket.send(Message::Text(outgoing_json)).await?;
+    Ok(())
+}
 fn systemtime_to_rfc3339(value: SystemTime) -> String {
     let date: DateTime<Utc> = value.into();
     date.to_rfc3339()
@@ -156,6 +180,22 @@ struct Event {
 struct OutgoingBatch {
     batch_number: u64,
     events: Vec<Event>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OutgoingOperation {
+    headers: OperationHeaders,
+    transaction_hash: Option<String>,
+    error_message: Option<String>,
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OperationHeaders {
+    request_id: String,
+    #[serde(rename = "type")]
+    type_: String,
 }
 
 pub async fn handle_socket_upgrade(

@@ -4,6 +4,7 @@ use anyhow::Context;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use pallas_primitives::conway::Tx;
 use serde_json::Value;
+use tokio::sync::broadcast;
 
 use crate::{
     blockchain::BlockchainClient, contracts::ContractManager, persistence::Persistence,
@@ -17,6 +18,7 @@ pub struct OperationsManager {
     contracts: Arc<ContractManager>,
     persistence: Arc<dyn Persistence>,
     signer: Arc<CardanoSigner>,
+    operation_sink: broadcast::Sender<Operation>,
 }
 
 impl OperationsManager {
@@ -25,12 +27,14 @@ impl OperationsManager {
         contracts: Arc<ContractManager>,
         persistence: Arc<dyn Persistence>,
         signer: Arc<CardanoSigner>,
+        operation_sink: broadcast::Sender<Operation>,
     ) -> Self {
         Self {
             blockchain,
             contracts,
             persistence,
             signer,
+            operation_sink,
         }
     }
 
@@ -40,16 +44,16 @@ impl OperationsManager {
             status: OperationStatus::Pending,
             tx_id: None,
         };
-        self.persistence.write_operation(&op).await?;
+        self.update_operation(&op).await?;
         match self.contracts.deploy(name, contract).await {
             Ok(()) => {
                 op.status = OperationStatus::Succeeded;
-                self.persistence.write_operation(&op).await?;
+                self.update_operation(&op).await?;
                 Ok(())
             }
             Err(err) => {
                 op.status = OperationStatus::Failed(err.to_string());
-                self.persistence.write_operation(&op).await?;
+                self.update_operation(&op).await?;
                 Err(err.into())
             }
         }
@@ -68,13 +72,13 @@ impl OperationsManager {
             status: OperationStatus::Pending,
             tx_id: None,
         };
-        self.persistence.write_operation(&op).await?;
+        self.update_operation(&op).await?;
         let result = self.contracts.invoke(contract, method, params).await;
         let value = match result {
             Ok(v) => v,
             Err(err) => {
                 op.status = OperationStatus::Failed(err.to_string());
-                self.persistence.write_operation(&op).await?;
+                self.update_operation(&op).await?;
                 return Err(err.into());
             }
         };
@@ -83,7 +87,7 @@ impl OperationsManager {
         }
 
         op.status = OperationStatus::Succeeded;
-        self.persistence.write_operation(&op).await?;
+        self.update_operation(&op).await?;
 
         Ok(())
     }
@@ -93,6 +97,14 @@ impl OperationsManager {
             return Err(ApiError::not_found("No operation found with that id"));
         };
         Ok(op)
+    }
+
+    async fn update_operation(&self, op: &Operation) -> ApiResult<()> {
+        // Notify consumers about this status update.
+        // Errors are fine, just means nobody is listening
+        let _ = self.operation_sink.send(op.clone());
+        self.persistence.write_operation(op).await?;
+        Ok(())
     }
 
     async fn submit_transaction(&self, address: &str, tx: Vec<u8>) -> ApiResult<String> {

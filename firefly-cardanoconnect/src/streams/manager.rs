@@ -2,13 +2,13 @@ use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
 use firefly_server::apitypes::{ApiError, ApiResult};
-use tokio::sync::mpsc;
+use tokio::sync::broadcast;
 use ulid::Ulid;
 
-use crate::{blockchain::BlockchainClient, persistence::Persistence};
+use crate::{blockchain::BlockchainClient, operations::Operation, persistence::Persistence};
 
 use super::{
-    mux::{Batch, Multiplexer},
+    mux::{Multiplexer, StreamSubscription},
     BlockReference, Listener, ListenerFilter, ListenerId, ListenerType, Stream, StreamId,
 };
 
@@ -21,10 +21,11 @@ impl StreamManager {
     pub async fn new(
         persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
+        operation_sink: broadcast::Sender<Operation>,
     ) -> Result<Self> {
         Ok(Self {
             persistence: persistence.clone(),
-            mux: Multiplexer::new(persistence, blockchain).await?,
+            mux: Multiplexer::new(persistence, blockchain, operation_sink).await?,
         })
     }
 
@@ -160,7 +161,7 @@ impl StreamManager {
         Ok(())
     }
 
-    pub async fn subscribe(&self, topic: &str) -> Result<mpsc::Receiver<Batch>> {
+    pub async fn subscribe(&self, topic: &str) -> Result<StreamSubscription> {
         self.mux.subscribe(topic).await
     }
 }

@@ -25,6 +25,7 @@ use routes::{
 };
 use signer::CardanoSigner;
 use streams::StreamManager;
+use tokio::sync::broadcast;
 use tracing::instrument;
 
 mod blockchain;
@@ -75,18 +76,23 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
     } else {
         Arc::new(ContractManager::none())
     };
+
+    let operation_sink = broadcast::Sender::new(1024);
     let operations = Arc::new(OperationsManager::new(
         blockchain.clone(),
         contracts,
         persistence.clone(),
         signer.clone(),
+        operation_sink.clone(),
     ));
 
     let state = AppState {
         blockchain: blockchain.clone(),
         operations,
         signer,
-        stream_manager: Arc::new(StreamManager::new(persistence, blockchain).await?),
+        stream_manager: Arc::new(
+            StreamManager::new(persistence, blockchain, operation_sink).await?,
+        ),
     };
 
     Ok(state)

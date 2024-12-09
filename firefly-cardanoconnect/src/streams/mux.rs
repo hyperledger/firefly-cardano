@@ -11,13 +11,14 @@ use firefly_server::apitypes::ToAnyhow;
 use serde_json::json;
 use tokio::{
     select,
-    sync::{mpsc, oneshot},
+    sync::{broadcast, mpsc, oneshot},
     time,
 };
 use tracing::warn;
 
 use crate::{
     blockchain::BlockchainClient,
+    operations::Operation,
     persistence::Persistence,
     streams::{blockchain::ListenerEvent, EventId},
 };
@@ -32,6 +33,7 @@ use super::{
 pub struct Multiplexer {
     dispatchers: Arc<DashMap<StreamId, StreamDispatcher>>,
     stream_ids_by_topic: Arc<DashMap<String, StreamId>>,
+    operation_sink: broadcast::Sender<Operation>,
     persistence: Arc<dyn Persistence>,
     data_source: Arc<DataSource>,
 }
@@ -40,6 +42,7 @@ impl Multiplexer {
     pub async fn new(
         persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
+        operation_sink: broadcast::Sender<Operation>,
     ) -> Result<Self> {
         let data_source = Arc::new(DataSource::new(blockchain, persistence.clone()));
 
@@ -49,13 +52,19 @@ impl Multiplexer {
             let topic = stream.name.clone();
             stream_ids_by_topic.insert(topic.clone(), stream.id.clone());
 
-            let dispatcher =
-                StreamDispatcher::new(&stream, persistence.clone(), data_source.clone()).await?;
+            let dispatcher = StreamDispatcher::new(
+                &stream,
+                persistence.clone(),
+                data_source.clone(),
+                operation_sink.clone(),
+            )
+            .await?;
             dispatchers.insert(stream.id, dispatcher);
         }
         Ok(Self {
             dispatchers: Arc::new(dispatchers),
             stream_ids_by_topic: Arc::new(stream_ids_by_topic),
+            operation_sink,
             persistence,
             data_source,
         })
@@ -75,6 +84,7 @@ impl Multiplexer {
                         stream,
                         self.persistence.clone(),
                         self.data_source.clone(),
+                        self.operation_sink.clone(),
                     )
                     .await?,
                 );
@@ -121,7 +131,7 @@ impl Multiplexer {
         dispatcher.remove_listener(listener_id).await
     }
 
-    pub async fn subscribe(&self, topic: &str) -> Result<mpsc::Receiver<Batch>> {
+    pub async fn subscribe(&self, topic: &str) -> Result<StreamSubscription> {
         let Some(stream_id) = self.stream_ids_by_topic.get(topic) else {
             bail!("no stream found for topic {topic}");
         };
@@ -134,6 +144,7 @@ impl Multiplexer {
 
 struct StreamDispatcher {
     state_change_sink: mpsc::Sender<StreamDispatcherStateChange>,
+    operation_sink: broadcast::Sender<Operation>,
 }
 
 impl StreamDispatcher {
@@ -141,6 +152,7 @@ impl StreamDispatcher {
         stream: &Stream,
         persistence: Arc<dyn Persistence>,
         data_source: Arc<DataSource>,
+        operation_sink: broadcast::Sender<Operation>,
     ) -> Result<Self> {
         let (state_change_sink, state_change_source) = mpsc::channel(16);
 
@@ -181,7 +193,10 @@ impl StreamDispatcher {
             };
             worker.run(state_change_source).await;
         });
-        Ok(Self { state_change_sink })
+        Ok(Self {
+            state_change_sink,
+            operation_sink,
+        })
     }
 
     pub async fn update_settings(&self, stream: &Stream) -> Result<()> {
@@ -224,13 +239,17 @@ impl StreamDispatcher {
         Ok(())
     }
 
-    pub async fn subscribe(&self) -> Result<mpsc::Receiver<Batch>> {
+    pub async fn subscribe(&self) -> Result<StreamSubscription> {
         let (batch_sink, batch_source) = mpsc::channel(1);
         self.state_change_sink
             .send(StreamDispatcherStateChange::NewBatchSink(batch_sink))
             .await
             .context("could not subscribe to stream")?;
-        Ok(batch_source)
+        let operation_source = self.operation_sink.subscribe();
+        Ok(StreamSubscription {
+            batch_receiver: batch_source,
+            operation_receiver: operation_source,
+        })
     }
 }
 
@@ -606,4 +625,25 @@ impl Batch {
     pub fn ack(self) {
         let _ = self.ack_tx.send(());
     }
+}
+
+pub struct StreamSubscription {
+    batch_receiver: mpsc::Receiver<Batch>,
+    operation_receiver: broadcast::Receiver<Operation>,
+}
+
+impl StreamSubscription {
+    pub async fn recv(&mut self) -> Option<StreamMessage> {
+        select! {
+            biased;
+            Ok(op) = self.operation_receiver.recv() => Some(StreamMessage::Operation(op)),
+            Some(batch) = self.batch_receiver.recv() => Some(StreamMessage::Batch(batch)),
+            else => None
+        }
+    }
+}
+
+pub enum StreamMessage {
+    Batch(Batch),
+    Operation(Operation),
 }
