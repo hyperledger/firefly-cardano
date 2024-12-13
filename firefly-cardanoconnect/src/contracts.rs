@@ -23,8 +23,9 @@ pub struct ContractsConfig {
 }
 
 pub struct ContractManager {
-    components_path: Option<PathBuf>,
-    runtime: Option<RwLock<Runtime>>,
+    config: Option<ContractsConfig>,
+    blockfrost: Option<BlockfrostClient>,
+    runtime: RwLock<Option<Runtime>>,
 }
 
 impl ContractManager {
@@ -33,30 +34,31 @@ impl ContractManager {
         blockfrost: Option<BlockfrostClient>,
     ) -> Result<Self> {
         fs::create_dir_all(&config.components_path).await?;
-        let runtime = Self::new_runtime(config, blockfrost).await?;
+        let runtime = Self::new_runtime(config, blockfrost.clone()).await?;
         Ok(Self {
-            components_path: Some(config.components_path.clone()),
-            runtime: Some(RwLock::new(runtime)),
+            config: Some(config.clone()),
+            blockfrost,
+            runtime: RwLock::new(Some(runtime)),
         })
     }
 
     pub fn none() -> Self {
         Self {
-            components_path: None,
-            runtime: None,
+            config: None,
+            blockfrost: None,
+            runtime: RwLock::new(None),
         }
     }
 
     pub async fn deploy(&self, id: &str, contract: &[u8]) -> Result<()> {
-        let Some(components_path) = self.components_path.as_deref() else {
+        let Some(config) = self.config.as_ref() else {
             bail!("No contract directory configured");
         };
-        let path = components_path.join(format!("{id}.wasm"));
+        let path = config.components_path.join(format!("{id}.wasm"));
         fs::write(&path, contract).await?;
-        if let Some(rt_lock) = &self.runtime {
-            let mut runtime = rt_lock.write().await;
-            runtime.register_worker(id, path, json!(null)).await?;
-        }
+        let mut rt_lock = self.runtime.write().await;
+        *rt_lock = None; // drop the old worker before opening the new
+        *rt_lock = Some(Self::new_runtime(config, self.blockfrost.clone()).await?);
         Ok(())
     }
 
@@ -67,11 +69,10 @@ impl ContractManager {
         params: Value,
     ) -> Result<Option<Vec<u8>>> {
         let params = serde_json::to_vec(&params)?;
-        let Some(rt_lock) = &self.runtime else {
-            bail!("Contract manager not configured");
+        let rt_lock = self.runtime.read().await;
+        let Some(runtime) = rt_lock.as_ref() else {
+            bail!("Contract manager not configured")
         };
-
-        let runtime = rt_lock.read().await;
         let response = runtime.handle_request(contract, method, params).await?;
         match response {
             Response::PartialTx(bytes) => Ok(Some(bytes)),
