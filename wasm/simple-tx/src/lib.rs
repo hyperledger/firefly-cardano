@@ -61,9 +61,8 @@ impl InputExpr for CoinSelectionInput {
 fn send_ada(_: Config<()>, req: Params<TransferRequest>) -> WorkerResult<NewTx> {
     let mut tx = TxBuilder::new();
 
-    // TODO: return an error if this address is invalid
-    let from_address = Address::from_bech32(&req.from_address).unwrap();
-    let to_address = Address::from_bech32(&req.to_address).unwrap();
+    let from_address = Address::from_bech32(&req.from_address).map_err(|_| BuildError::MalformedAddress)?;
+    let to_address = Address::from_bech32(&req.to_address).map_err(|_| BuildError::MalformedAddress)?;
 
     let address_source = UtxoSource::Search(UtxoPattern {
         address: Some(AddressPattern {
