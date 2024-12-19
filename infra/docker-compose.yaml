@@ -1,5 +1,6 @@
 services:
   firefly-cardanoconnect:
+    image: ghcr.io/blockfrost/firefly-cardanoconnect:docker-stuff
     build:
       context: ..
       target: firefly-cardanoconnect
@@ -19,6 +20,7 @@ services:
       - ./connect.yaml:/app/config.yaml
 
   firefly-cardanosigner:
+    image: ghcr.io/blockfrost/firefly-cardanosigner:docker-stuff
     build:
       context: ..
       target: firefly-cardanosigner
