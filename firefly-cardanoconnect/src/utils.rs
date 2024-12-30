@@ -61,4 +61,7 @@ impl<T> LazyInit<T> {
         }
         self.value.as_mut().unwrap()
     }
+    pub fn try_get(&mut self) -> Option<&mut T> {
+        self.value.as_mut()
+    }
 }

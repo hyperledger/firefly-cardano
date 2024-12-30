@@ -1,4 +1,5 @@
 mod blockchain;
+mod events;
 mod manager;
 mod mux;
 mod types;

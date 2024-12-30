@@ -87,7 +87,7 @@ impl PartialOrd for BlockReference {
     }
 }
 
-#[derive(Clone, Debug, Default, Serialize, Deserialize)]
+#[derive(Clone, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EventReference {
     pub block: BlockReference,
     pub rollback: bool,

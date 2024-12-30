@@ -55,16 +55,19 @@ impl ChainListener {
         Ok(self.get_impl().await?.get_tip())
     }
 
-    pub async fn get_event(&mut self, block_ref: &BlockReference) -> Option<ListenerEvent> {
-        self.get_impl().await.unwrap().get_event(block_ref)
+    pub fn try_get_next_event(&mut self, block_ref: &BlockReference) -> Option<ListenerEvent> {
+        let l = self.0.try_get()?.as_mut().ok()?;
+        l.try_get_next_event(block_ref)
     }
 
-    pub async fn get_next(&mut self, block_ref: &BlockReference) -> Option<BlockReference> {
-        self.get_impl().await.unwrap().get_next(block_ref).await
-    }
-
-    pub async fn get_next_rollback(&mut self, block_ref: &BlockReference) -> BlockReference {
-        self.get_impl().await.unwrap().get_next_rollback(block_ref)
+    pub async fn wait_for_next_event(&mut self, block_ref: &BlockReference) -> ListenerEvent {
+        let l = self.get_impl().await.unwrap();
+        loop {
+            if let Some(event) = l.try_get_next_event(block_ref) {
+                return event;
+            }
+            l.wait_for_more_events().await;
+        }
     }
 
     async fn get_impl(&mut self) -> Result<&mut ChainListenerImpl> {
@@ -103,13 +106,13 @@ impl ChainListenerImpl {
         self.history.back().unwrap().as_reference()
     }
 
-    pub fn get_event(&mut self, block_ref: &BlockReference) -> Option<ListenerEvent> {
-        let (target_slot, target_hash) = match block_ref {
+    pub fn try_get_next_event(&mut self, block_ref: &BlockReference) -> Option<ListenerEvent> {
+        let (prev_slot, prev_hash) = match block_ref {
             BlockReference::Origin => (None, self.genesis_hash.clone()),
             BlockReference::Point(slot, hash) => (*slot, hash.clone()),
         };
 
-        if let Some(slot) = target_slot {
+        if let Some(slot) = prev_slot {
             // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
             if self
                 .history
@@ -124,73 +127,42 @@ impl ChainListenerImpl {
             }
         }
 
-        // If we already know this block has been rolled back, just say so
-        if let Some(rollback) = self.rollbacks.get(block_ref) {
-            return Some(ListenerEvent::Rollback(rollback.clone()));
+        // Check if we've rolled back already
+        if let Some(rollback_to) = self.rollbacks.get(block_ref) {
+            return Some(ListenerEvent::Rollback(rollback_to.clone()));
         }
 
-        // If we have it already, return it.
-        // If we don't, no big deal, some other consumer is running at a different point in history
-        self.history
-            .iter()
-            .rev()
-            .take_while(|b| {
-                b.block_slot
-                    .is_none_or(|b| target_slot.is_none_or(|t| b >= t))
-            })
-            .find(|b| b.block_hash == target_hash)
-            .cloned()
-            .map(ListenerEvent::Process)
-    }
-
-    pub async fn get_next(&mut self, block_ref: &BlockReference) -> Option<BlockReference> {
-        let (prev_slot, prev_hash) = match block_ref {
-            BlockReference::Origin => (None, self.genesis_hash.clone()),
-            BlockReference::Point(slot, hash) => (*slot, hash.clone()),
-        };
-
-        loop {
-            // Have we rolled back to before this block? If so, don't wait for its successor.
-            // That successor will never come, and even if it did, we'd ignore it.
-            if self.rollbacks.contains_key(block_ref) {
-                return None;
-            }
-
-            for (index, block) in self.history.iter().enumerate().rev() {
-                if block.block_hash == prev_hash {
-                    if let Some(next) = self.history.get(index + 1) {
-                        // we already have the block which comes after this!
-                        return Some(next.as_reference());
-                    } else {
-                        // we don't have that block yet, so process events until we do
-                        break;
-                    }
-                }
-                // If we can tell by the slots we've gone too far back, break early
-                if block
-                    .block_slot
-                    .is_some_and(|slot| prev_slot.is_some_and(|target| slot < target))
-                {
+        for (index, block) in self.history.iter().enumerate().rev() {
+            if block.block_hash == prev_hash {
+                if let Some(next) = self.history.get(index + 1) {
+                    // we already have the block which comes after this!
+                    return Some(ListenerEvent::Process(next.clone()));
+                } else {
+                    // we don't have that block yet, so process events until we do
                     break;
                 }
             }
-
-            // We don't have it, wait until the chain has progressed before checking again
-            let mut sync_events = vec![];
-            if self.sync_event_source.recv_many(&mut sync_events, 32).await == 0 {
-                panic!("data source has been shut down")
-            }
-            for sync_event in sync_events {
-                self.handle_sync_event(sync_event);
+            // If we can tell by the slots we've gone too far back, break early
+            if block
+                .block_slot
+                .is_some_and(|slot| prev_slot.is_some_and(|target| slot < target))
+            {
+                break;
             }
         }
+
+        // We don't have it, wait until the chain has progressed before checking again
+        None
     }
 
-    pub fn get_next_rollback(&mut self, block_ref: &BlockReference) -> BlockReference {
-        let Some(rollback_to) = self.rollbacks.get(block_ref) else {
-            panic!("caller is trying to roll back when we didn't tell them to");
-        };
-        rollback_to.as_reference()
+    pub async fn wait_for_more_events(&mut self) {
+        let mut sync_events = vec![];
+        if self.sync_event_source.recv_many(&mut sync_events, 32).await == 0 {
+            panic!("data source has been shut down")
+        }
+        for sync_event in sync_events {
+            self.handle_sync_event(sync_event);
+        }
     }
 
     fn handle_sync_event(&mut self, sync_event: ChainSyncEvent) {
