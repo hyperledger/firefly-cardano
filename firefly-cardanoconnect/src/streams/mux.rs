@@ -11,7 +11,12 @@ use tokio::{
 };
 use tracing::warn;
 
-use crate::{blockchain::BlockchainClient, operations::Operation, persistence::Persistence};
+use crate::{
+    blockchain::BlockchainClient,
+    contracts::{ContractListener, ContractManager},
+    operations::Operation,
+    persistence::Persistence,
+};
 
 use super::{
     blockchain::{ChainListener, DataSource},
@@ -25,14 +30,16 @@ pub struct Multiplexer {
     dispatchers: Arc<DashMap<StreamId, StreamDispatcher>>,
     stream_ids_by_topic: Arc<DashMap<String, StreamId>>,
     operation_sink: broadcast::Sender<Operation>,
+    contracts: Arc<ContractManager>,
     persistence: Arc<dyn Persistence>,
     data_source: Arc<DataSource>,
 }
 
 impl Multiplexer {
     pub async fn new(
-        persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
+        contracts: Arc<ContractManager>,
+        persistence: Arc<dyn Persistence>,
         operation_sink: broadcast::Sender<Operation>,
     ) -> Result<Self> {
         let data_source = Arc::new(DataSource::new(blockchain, persistence.clone()));
@@ -45,6 +52,7 @@ impl Multiplexer {
 
             let dispatcher = StreamDispatcher::new(
                 &stream,
+                contracts.clone(),
                 persistence.clone(),
                 data_source.clone(),
                 operation_sink.clone(),
@@ -56,6 +64,7 @@ impl Multiplexer {
             dispatchers: Arc::new(dispatchers),
             stream_ids_by_topic: Arc::new(stream_ids_by_topic),
             operation_sink,
+            contracts,
             persistence,
             data_source,
         })
@@ -73,6 +82,7 @@ impl Multiplexer {
                 entry.insert(
                     StreamDispatcher::new(
                         stream,
+                        self.contracts.clone(),
                         self.persistence.clone(),
                         self.data_source.clone(),
                         self.operation_sink.clone(),
@@ -97,6 +107,7 @@ impl Multiplexer {
             .data_source
             .listen(listener.id.clone(), from_block.as_ref());
         let block = from_block.unwrap_or(sync.get_tip().await?);
+        let contract = self.contracts.listen(listener).await;
         let hwm = EventReference {
             block,
             rollback: false,
@@ -107,7 +118,7 @@ impl Multiplexer {
         let Some(dispatcher) = self.dispatchers.get(&listener.stream_id) else {
             bail!("new listener created for stream we haven't heard of");
         };
-        dispatcher.add_listener(listener, sync, hwm).await
+        dispatcher.add_listener(listener, sync, contract, hwm).await
     }
 
     pub async fn handle_listener_delete(
@@ -141,6 +152,7 @@ struct StreamDispatcher {
 impl StreamDispatcher {
     pub async fn new(
         stream: &Stream,
+        contracts: Arc<ContractManager>,
         persistence: Arc<dyn Persistence>,
         data_source: Arc<DataSource>,
         operation_sink: broadcast::Sender<Operation>,
@@ -161,13 +173,19 @@ impl StreamDispatcher {
             for listener in all_listeners {
                 let hwm = old_hwms.get(&listener.id).cloned().unwrap_or_default();
                 let sync = data_source.listen(listener.id.clone(), Some(&hwm.block));
+                let contract = contracts.listen(&listener).await;
 
                 hwms.insert(listener.id.clone(), hwm);
                 listeners.insert(
                     listener.id.clone(),
                     ListenerState {
                         id: listener.id.clone(),
-                        stream: ChainEventStream::new(listener.id, listener.filters, sync),
+                        stream: ChainEventStream::new(
+                            listener.id,
+                            listener.filters,
+                            sync,
+                            contract,
+                        ),
                     },
                 );
             }
@@ -205,6 +223,7 @@ impl StreamDispatcher {
         &self,
         listener: &Listener,
         sync: ChainListener,
+        contract: ContractListener,
         hwm: EventReference,
     ) -> Result<()> {
         self.state_change_sink
@@ -212,6 +231,7 @@ impl StreamDispatcher {
                 listener.id.clone(),
                 listener.filters.clone(),
                 sync,
+                contract,
                 hwm,
             ))
             .await
@@ -265,10 +285,10 @@ impl StreamDispatcherWorker {
                             self.batch_size = settings.batch_size;
                             self.batch_timeout = settings.batch_timeout;
                         }
-                        StreamDispatcherStateChange::NewListener(listener_id, filters, sync, hwm) => {
+                        StreamDispatcherStateChange::NewListener(listener_id, filters, sync, contract, hwm) => {
                             self.listeners.insert(listener_id.clone(), ListenerState {
                                 id: listener_id.clone(),
-                                stream: ChainEventStream::new(listener_id.clone(), filters.clone(), sync),
+                                stream: ChainEventStream::new(listener_id.clone(), filters, sync, contract),
                             });
                             self.hwms.insert(listener_id, hwm);
                         }
@@ -358,7 +378,7 @@ impl StreamDispatcherWorker {
             let mut next_event_future = FuturesUnordered::new();
             for listener in self.listeners.values_mut() {
                 let hwm = hwms.get(&listener.id).unwrap();
-                if let Some((event_ref, event)) = listener.stream.try_get_next_event(hwm) {
+                if let Some((event_ref, event)) = listener.stream.try_get_next_event(hwm).await {
                     // This listener already has an event waiting to surface.
                     new_events.push((listener.id.clone(), event_ref, event));
                 } else {
@@ -410,7 +430,6 @@ impl StreamDispatcherWorker {
     }
 }
 
-#[derive(Debug)]
 struct ListenerState {
     id: ListenerId,
     stream: ChainEventStream,
@@ -422,6 +441,7 @@ enum StreamDispatcherStateChange {
         ListenerId,
         Vec<ListenerFilter>,
         ChainListener,
+        ContractListener,
         EventReference,
     ),
     RemovedListener(ListenerId),

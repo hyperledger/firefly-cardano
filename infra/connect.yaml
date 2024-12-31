@@ -6,7 +6,7 @@ connector:
     network: preview
 contracts:
   componentsPath: /contracts/components
-  storePath: /contracts/store.redb
+  storesPath: /contracts/stores
 persistence:
   type: sqlite
   path: /db/db.sqlite3

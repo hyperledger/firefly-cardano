@@ -44,6 +44,10 @@ pub enum ListenerType {
 #[serde(rename_all = "camelCase")]
 pub enum ListenerFilter {
     TransactionId(String),
+    Event {
+        contract: String,
+        event_path: String,
+    },
 }
 
 #[derive(Clone, Debug)]
@@ -132,14 +136,4 @@ pub struct EventId {
 pub struct Event {
     pub id: EventId,
     pub data: serde_json::Value,
-}
-impl Event {
-    pub fn into_rollback(mut self) -> Self {
-        if self.id.signature == "TransactionAccepted(string,string,string)" {
-            self.id.signature = "TransactionRolledBack(string,string,string)".into();
-        } else if self.id.signature == "TransactionRolledBack(string,string,string)" {
-            self.id.signature = "TransactionAccepted(string,string,string)".into();
-        }
-        self
-    }
 }
