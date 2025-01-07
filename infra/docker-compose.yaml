@@ -28,9 +28,7 @@ services:
       watch:
       - action: rebuild
         path: ../firefly-cardanosigner
-    command: ./firefly-cardanosigner
-    environment:
-      - FIREFLY_SIGNER_FILEWALLET_PATH=/wallet
+    command: ./firefly-cardanosigner --config-file /app/config.yaml
     ports:
       - 8555:8555
     volumes:
