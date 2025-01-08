@@ -1,100 +1,101 @@
 name: Publish Docker image
 
 on:
+  pull_request:
   push:
     branches:
       - docker-stuff
 
 jobs:
-# push_to_registry:
-#   name: Push Docker image to GHCR
-#   runs-on: ubuntu-latest
-#   permissions:
-#     packages: write
-#     contents: read
-#     attestations: write
-#     id-token: write
-#   steps:
-#     - name: Check out the repo
-#       uses: actions/checkout@v4
+  push_to_registry:
+    name: Push Docker image to GHCR
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+      contents: read
+      attestations: write
+      id-token: write
+    steps:
+      - name: Check out the repo
+        uses: actions/checkout@v4
 
-#     - name: Set up Docker Buildx
-#       uses: docker/setup-buildx-action@v3.8.0
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3.8.0
 
-#     - name: Log in to GHCR
-#       uses: docker/login-action@v3.3.0
-#       with:
-#         registry: ghcr.io
-#         username: ${{ github.actor }}
-#         password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Log in to GHCR
+        uses: docker/login-action@v3.3.0
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
 
-#     - name: Cargo Cache
-#       id: cache
-#       uses: actions/cache@v4
-#       with:
-#         path: |
-#           cargo-registry-cache
-#           sccache-cache
-#         key: ${{ runner.os }}-cargo-cache-${{ github.sha }}
-#         restore-keys: |
-#           ${{ runner.os }}-cargo-cache
+      - name: Cargo Cache
+        id: cache
+        uses: actions/cache@v4
+        with:
+          path: |
+            cargo-registry-cache
+            sccache-cache
+          key: ${{ runner.os }}-cargo-cache-${{ github.sha }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-cache
 
-#     - name: inject cargo caches into docker
-#       uses: reproducible-containers/buildkit-cache-dance@v3.1.2
-#       with:
-#         cache-map: |
-#           {
-#             "cargo-registry-cache": "/usr/local/cargo/registry",
-#             "sccache-cache": "/sccache"
-#           }
-#         skip-extraction: ${{ steps.cache.outputs.cache-hit }}
+      - name: inject cargo caches into docker
+        uses: reproducible-containers/buildkit-cache-dance@v3.1.2
+        with:
+          cache-map: |
+            {
+              "cargo-registry-cache": "/usr/local/cargo/registry",
+              "sccache-cache": "/sccache"
+            }
+          skip-extraction: ${{ steps.cache.outputs.cache-hit }}
 
-#     - name: Extract Docker metadata for firefly-cardanoconnect
-#       id: firefly-cardanoconnect-meta
-#       uses: docker/metadata-action@v5.6.1
-#       with:
-#         images: ghcr.io/blockfrost/firefly-cardanoconnect
-#     - name: Build and push Docker image for firefly-cardanoconnect
-#       id: firefly-cardanoconnect-push
-#       uses: docker/build-push-action@v6.10.0
-#       with:
-#         cache-from: type=gha
-#         cache-to: type=gha,mode=max
-#         context: .
-#         file: ./Dockerfile
-#         target: firefly-cardanoconnect
-#         push: true
-#         tags: ${{ steps.firefly-cardanoconnect-meta.outputs.tags }}
-#         labels: ${{ steps.firefly-cardanoconnect-meta.outputs.labels }}
+      - name: Extract Docker metadata for firefly-cardanoconnect
+        id: firefly-cardanoconnect-meta
+        uses: docker/metadata-action@v5.6.1
+        with:
+          images: ghcr.io/blockfrost/firefly-cardanoconnect
+      - name: Build and push Docker image for firefly-cardanoconnect
+        id: firefly-cardanoconnect-push
+        uses: docker/build-push-action@v6.10.0
+        with:
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          context: .
+          file: ./Dockerfile
+          target: firefly-cardanoconnect
+          push: true
+          tags: ${{ steps.firefly-cardanoconnect-meta.outputs.tags }}
+          labels: ${{ steps.firefly-cardanoconnect-meta.outputs.labels }}
 
-#     - name: Extract Docker metadata for firefly-cardanosigner
-#       id: firefly-cardanosigner-meta
-#       uses: docker/metadata-action@v5.6.1
-#       with:
-#         images: ghcr.io/blockfrost/firefly-cardanosigner
-#     - name: Build and push Docker image for firefly-cardanosigner
-#       id: firefly-cardanosigner-push
-#       uses: docker/build-push-action@v6.10.0
-#       with:
-#         registry: ghcr.io
-#         cache-from: type=gha
-#         cache-to: type=gha,mode=max
-#         context: .
-#         file: ./Dockerfile
-#         target: firefly-cardanosigner
-#         push: true
-#         tags: ${{ steps.firefly-cardanosigner-meta.outputs.tags }}
-#         labels: ${{ steps.firefly-cardanosigner-meta.outputs.labels }}
+      - name: Extract Docker metadata for firefly-cardanosigner
+        id: firefly-cardanosigner-meta
+        uses: docker/metadata-action@v5.6.1
+        with:
+          images: ghcr.io/blockfrost/firefly-cardanosigner
+      - name: Build and push Docker image for firefly-cardanosigner
+        id: firefly-cardanosigner-push
+        uses: docker/build-push-action@v6.10.0
+        with:
+          registry: ghcr.io
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          context: .
+          file: ./Dockerfile
+          target: firefly-cardanosigner
+          push: true
+          tags: ${{ steps.firefly-cardanosigner-meta.outputs.tags }}
+          labels: ${{ steps.firefly-cardanosigner-meta.outputs.labels }}
 
   demo:
     name: Run Demo
     runs-on: ubuntu-latest
-    #    needs: push_to_registry
+    needs: push_to_registry
     steps:
       - name: Check out the repo
         uses: actions/checkout@v4
       - name: Add wallet secret
-        run: mkdir ./infra/wallet ; echo "${{ secrets.DEMO_WALLET }}" > ./infra/wallet/addr_test1vqhkukz0285zvk0xrwk9jlq0075tx6furuzcjvzpnhtgelsuhhqc4.skey
+        run: mkdir ./infra/wallet ; echo '${{ secrets.DEMO_WALLET }}' > ./infra/wallet/addr_test1vqhkukz0285zvk0xrwk9jlq0075tx6furuzcjvzpnhtgelsuhhqc4.skey
       - name: Start docker-compose
         run: docker compose -f ./infra/docker-compose.yaml -p preview up  -d --no-build
         env:
