@@ -4,7 +4,7 @@ on:
   pull_request:
   push:
     branches:
-      - docker-stuff
+      - main
 
 jobs:
   push_to_registry:
