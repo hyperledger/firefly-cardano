@@ -10,7 +10,6 @@
     flake-parts.url = "github:hercules-ci/flake-parts";
     flake-parts.inputs.nixpkgs-lib.follows = "nixpkgs";
 
-    cardano-cli.url = "github:IntersectMBO/cardano-cli";
   };
 
   outputs = {...} @ inputs:
@@ -40,10 +39,6 @@
           commands = [
             {package = pkgs.treefmt;}
             {package = pkgs.just;}
-            {
-              name = "cardano-cli";
-              package = inputs.cardano-cli.legacyPackages.${system}.cardano-cli;
-            }
           ];
 
           devshell.startup.setup.text = ''
