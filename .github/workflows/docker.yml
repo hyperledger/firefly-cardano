@@ -1,7 +1,6 @@
 name: Publish Docker image
 
 on:
-  pull_request:
   push:
     branches:
       - main
@@ -87,33 +86,3 @@ jobs:
           tags: ${{ steps.firefly-cardanosigner-meta.outputs.tags }}
           labels: ${{ steps.firefly-cardanosigner-meta.outputs.labels }}
 
-  demo:
-    name: Run Demo
-    runs-on: ubuntu-latest
-    needs: push_to_registry
-    steps:
-      - name: Check out the repo
-        uses: actions/checkout@v4
-      - name: Add wallet secret
-        run: mkdir ./infra/wallet ; echo '${{ secrets.DEMO_WALLET }}' > ./infra/wallet/addr_test1vqhkukz0285zvk0xrwk9jlq0075tx6furuzcjvzpnhtgelsuhhqc4.skey
-      - name: Start docker-compose
-        run: docker compose -f ./infra/docker-compose.yaml -p preview up  -d --no-build
-        env:
-          BLOCKFROST_KEY: ${{ secrets.BLOCKFROST_KEY }}
-      - name: Add just
-        uses: extractions/setup-just@v2
-      - name: Set up Rust
-        uses: actions-rs/toolchain@v1
-        with:
-          toolchain: stable
-      - name: Add wasm32-unknown-unknown target
-        run: rustup target add wasm32-unknown-unknown
-      - name: Logs
-        run: |
-          docker compose -f ./infra/docker-compose.yaml -p preview logs
-          docker ps -a
-      - name: Run demo
-        env:
-          ADDR_FROM: addr_test1vqhkukz0285zvk0xrwk9jlq0075tx6furuzcjvzpnhtgelsuhhqc4
-          ADDR_TO: addr_test1vqeux7xwusdju9dvsj8h7mca9aup2k439kfmwy773xxc2hcu7zy99
-        run: just demo
