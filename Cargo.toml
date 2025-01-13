@@ -1,6 +1,7 @@
 [workspace]
 
 members = [
+    "firefly-balius",
     "firefly-cardanoconnect",
     "firefly-cardanosigner",
     "firefly-server",

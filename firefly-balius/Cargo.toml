@@ -1,0 +1,8 @@
+[package]
+name = "firefly-balius"
+version = "0.1.0"
+edition = "2021"
+repository = "https://github.com/blockfrost/firefly-cardano"
+
+[dependencies]
+balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "a72601f" }

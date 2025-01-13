@@ -298,6 +298,13 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "486f806e73c5707928240ddc295403b1b93c96a02038563881c4a2fd84b81ac4"
 
 [[package]]
+name = "firefly-balius"
+version = "0.1.0"
+dependencies = [
+ "balius-sdk",
+]
+
+[[package]]
 name = "fixedbitset"
 version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -986,6 +993,7 @@ name = "simple-tx"
 version = "0.1.0"
 dependencies = [
  "balius-sdk",
+ "firefly-balius",
  "pallas-addresses",
  "pallas-traverse",
  "serde",
