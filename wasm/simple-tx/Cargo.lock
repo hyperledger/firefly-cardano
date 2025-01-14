@@ -302,6 +302,7 @@ name = "firefly-balius"
 version = "0.1.0"
 dependencies = [
  "balius-sdk",
+ "serde",
 ]
 
 [[package]]

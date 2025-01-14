@@ -83,7 +83,9 @@ impl OperationsManager {
             }
         };
         if let Some(tx) = value {
-            op.tx_id = Some(self.submit_transaction(from, tx).await?);
+            let tx_id = self.submit_transaction(from, tx).await?;
+            op.tx_id = Some(tx_id.clone());
+            self.contracts.handle_submit(contract, method, &tx_id).await;
         }
 
         op.status = OperationStatus::Succeeded;

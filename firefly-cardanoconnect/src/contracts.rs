@@ -99,6 +99,17 @@ impl ContractManager {
         }
     }
 
+    pub async fn handle_submit(&self, contract: &str, method: &str, tx_id: &str) {
+        let params = serde_json::json!({
+            "method": method,
+            "hash": tx_id,
+        });
+        let runtime = self.get_contract_runtime(contract).await;
+        let mut lock = runtime.lock().await;
+
+        let _: Result<_, _> = lock.invoke("__tx_submitted", params).await;
+    }
+
     pub async fn listen(&self, listener: &Listener) -> ContractListener {
         let contracts = find_contract_names(&listener.filters);
         let mut runtimes = vec![];

@@ -3,9 +3,9 @@ use balius_sdk::{
         AddressPattern, BuildError, FeeChangeReturn, OutputBuilder, TxBuilder, UtxoPattern,
         UtxoSource,
     },
-    Config, FnHandler, NewTx, Params, Worker, WorkerResult,
+    Ack, Config, FnHandler, NewTx, Params, Worker, WorkerResult,
 };
-use firefly_balius::CoinSelectionInput;
+use firefly_balius::{CoinSelectionInput, SubmittedTx, WorkerExt};
 use pallas_addresses::Address;
 use serde::Deserialize;
 
@@ -42,7 +42,15 @@ fn send_ada(_: Config<()>, req: Params<TransferRequest>) -> WorkerResult<NewTx> 
     Ok(NewTx(Box::new(tx)))
 }
 
+fn handle_submit(_: Config<()>, tx: SubmittedTx) -> WorkerResult<Ack> {
+    // TODO: track this
+    let _ = tx;
+    Ok(Ack)
+}
+
 #[balius_sdk::main]
 fn main() -> Worker {
-    Worker::new().with_request_handler("send_ada", FnHandler::from(send_ada))
+    Worker::new()
+        .with_request_handler("send_ada", FnHandler::from(send_ada))
+        .with_tx_submitted_handler(handle_submit)
 }
