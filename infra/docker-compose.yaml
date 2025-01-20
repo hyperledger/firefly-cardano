@@ -1,4 +1,42 @@
 services:
+  firefly-core:
+    image: ghcr.io/blockfrost/firefly-cardano
+    volumes:
+      - ./firefly-core.yaml:/etc/firefly/firefly.core.yml:ro
+    ports:
+      - 5000:5000
+      - 5101:5101
+    depends_on:
+      firefly-cardanoconnect:
+          condition: service_started
+      firefly-cardanosigner:
+          condition: service_started
+    healthcheck:
+      test:
+        - CMD
+        - curl
+        - --fail
+        - http://localhost:5000/api/v1/status
+      interval: 15s
+      retries: 30
+
+  postgres:
+    image: postgres
+    environment:
+        PGDATA: /var/lib/postgresql/data/pgdata
+        POSTGRES_PASSWORD: f1refly
+    volumes:
+        - firefly-db:/var/lib/postgresql/data
+    ports:
+        - 5104:5432
+    healthcheck:
+        test:
+            - CMD-SHELL
+            - pg_isready -U postgres
+        interval: 5s
+        timeout: 3s
+        retries: 12
+
   firefly-cardanoconnect:
     image: ghcr.io/blockfrost/firefly-cardanoconnect:main
     build:
@@ -14,9 +52,8 @@ services:
     ports:
       - 5018:5018
     volumes:
-      - ./ipc:/ipc
       - connect-contracts:/contracts
-      - connect-db:/db
+      - ./db:/db
       - ./connect.yaml:/app/config.yaml
 
   firefly-cardanosigner:
@@ -38,3 +75,4 @@ services:
 volumes:
   connect-contracts:
   connect-db:
+  firefly-db:
