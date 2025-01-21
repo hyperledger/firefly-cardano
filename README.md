@@ -1,43 +1,36 @@
-# firefly-cardano
+<img src="https://upload.wikimedia.org/wikipedia/commons/f/f8/Cardano.svg" width="250" align="right" height="90">
+<!-- TODO: platform specific logo would be nice -->
 
+# Monorepo for the Hyperledger Firefly implementation for Cardano blockchain
 
-## Getting Set Up
+## Introduction
 
-Install Nix:
-```console
-# Install Nix
-curl --proto '=https' --tlsv1.2 -sSf -L https://install.determinate.systems/nix | sh -s -- install
+The Hyperledger Firefly monorepo for Cardano blockchain offers a unified repository containing all the code, documentation, and tools necessary for developing and deploying multi-enterprise blockchain applications on the Cardano network.
 
-# Enter devshell:
-nix develop
+## Configuration of components
+
+For the firefly connector config, see [config.md](firefly-cardanoconnect/config.md).
+
+For the firefly signer config, see [config.md](firefly-cardanosigner/config.md).
+
+## Getting started
+
+To setup the components, you need a valid Blockfrost key, you can either [get it from the online service](https://blockfrost.io/) or [your can run your own cluster](https://github.com/blockfrost/blockfrost-backend-ryo).
+
+### Run it with Docker compose
+
+The easier way to get started is to use Docker compose to build your entire cluster.
+```
+# For solitary, run:
+BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX docker compose up --build -d
+
+# Watch the build
+docker compose watch
 ```
 
-### (Optional) Install direnv
-Should you prefer to load the devshell automatically when in a terminal
+### Demo application to showcase the Cardano Firefly connector
 
-- Install Direnv:
-  ```
-  # Install direnv
-  nix profile install nixpkgs#direnv
-
-  # Configure your shell to load direnv everytime you enter this project (If you do not use bash see: https://direnv.net/docs/hook.html)
-  echo 'eval "$(direnv hook bash)"' >> ~/.bashrc
-
-  # And in case your system does not automatically .bashrc
-  echo 'eval "$(direnv hook bash)"' >> ~/.bash_profile
-
-  # Configure blockfrost key
-  cp .envrc.local.example .envrc.local && vi .envrc.local
-  ```
-
-- Renter the shell for direnv to take effect
-- Trust direnv config (.envrc), whitelisting is required whenever this file changes
-  ```
-  direnv allow
-  ```
-## Play with it!
-
-- Export blockfrost key (done automaticaly by direnv if you have it set up):
+- Export your blockfrost key:
   ```
   export BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
   ```
@@ -61,12 +54,6 @@ Should you prefer to load the devshell automatically when in a terminal
 - Swagger definitions can be viewed at `http://localhost:5018/api` and `http://localhost:8555/api`
 - Execute `just demo` to run the demo application
 
-## Architecture
+## Engage with the community
 
-![](./arch.svg)
-
-## Config
-
-For the firefly connector config, see [config.md](firefly-cardanoconnect/config.md).
-
-For the firefly signer config, see [config.md](firefly-cardanosigner/config.md).
+- [Join us on Discord](https://discord.gg/hyperledger)
