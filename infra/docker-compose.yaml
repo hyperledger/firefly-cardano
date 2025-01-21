@@ -11,6 +11,8 @@ services:
           condition: service_started
       firefly-cardanosigner:
           condition: service_started
+      postgres:
+          condition: service_healthy
     healthcheck:
       test:
         - CMD
