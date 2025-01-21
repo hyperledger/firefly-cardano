@@ -15,7 +15,7 @@ impl OperationOutput for NoContent {
     type Inner = Self;
 
     fn inferred_responses(
-        _ctx: &mut aide::gen::GenContext,
+        _ctx: &mut aide::generate::GenContext,
         _operation: &mut openapi::Operation,
     ) -> Vec<(Option<u16>, openapi::Response)> {
         vec![(Some(204), openapi::Response::default())]

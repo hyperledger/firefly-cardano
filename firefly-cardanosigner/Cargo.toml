@@ -5,18 +5,18 @@ edition = "2021"
 repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
 
 [dependencies]
-aide = { version = "0.13", features = ["axum"] }
-axum = "0.7"
+aide = { version = "0.14", features = ["axum", "axum-json"] }
+axum = "0.8"
 anyhow = "1"
 bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.25"
-pallas-addresses = "0.31"
-pallas-crypto = "0.31"
-pallas-primitives = "0.31"
-pallas-wallet = "0.31"
+pallas-addresses = "0.32"
+pallas-crypto = "0.32"
+pallas-primitives = "0.32"
+pallas-wallet = "0.32"
 rand = "0.8"
 schemars = "0.8"
 serde = "1"

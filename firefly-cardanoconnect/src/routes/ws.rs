@@ -61,7 +61,7 @@ async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result
             .collect(),
     };
     let outgoing_json = serde_json::to_string(&outgoing_batch)?;
-    socket.send(Message::Text(outgoing_json)).await?;
+    socket.send(Message::Text(outgoing_json.into())).await?;
 
     let Some(response) = read_message(socket).await? else {
         bail!("socket was closed after sending a batch");
@@ -103,7 +103,7 @@ async fn send_operation(socket: &mut WebSocket, op: Operation) -> Result<()> {
         error_message: op.status.error_message().map(|m| m.to_string()),
     };
     let outgoing_json = serde_json::to_string(&operation)?;
-    socket.send(Message::Text(outgoing_json)).await?;
+    socket.send(Message::Text(outgoing_json.into())).await?;
     Ok(())
 }
 fn systemtime_to_rfc3339(value: SystemTime) -> String {
@@ -145,22 +145,23 @@ async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>>
             warn!("socket has been closed");
             return Ok(None);
         };
-        let data = match message.context("could not read websocket message")? {
+        let message = message.context("could not read websocket message")?;
+        let data: &[u8] = match &message {
             Message::Ping(_) | Message::Pong(_) => {
                 continue;
             }
             Message::Close(frame) => {
                 let reason = frame
-                    .map(|f| f.reason.into_owned())
+                    .as_ref()
+                    .map(|f| f.reason.to_owned())
                     .unwrap_or("socket was closed".into());
                 warn!("socket was closed: {}", reason);
                 return Ok(None);
             }
             Message::Binary(bytes) => bytes,
-            Message::Text(string) => string.into_bytes(),
+            Message::Text(string) => string.as_bytes(),
         };
-        let incoming =
-            serde_json::from_slice(&data).context("could not parse websocket message")?;
+        let incoming = serde_json::from_slice(data).context("could not parse websocket message")?;
         return Ok(Some(incoming));
     }
 }

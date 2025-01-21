@@ -113,18 +113,18 @@ async fn main() -> Result<()> {
         .api_route("/contracts/deploy", post(deploy_contract))
         .api_route("/contracts/invoke", post(invoke_contract))
         .api_route("/transactions", post(submit_transaction))
-        .api_route("/transactions/:id", get(get_operation_status))
+        .api_route("/transactions/{id}", get(get_operation_status))
         .api_route("/eventstreams", post(create_stream).get(list_streams))
         .api_route(
-            "/eventstreams/:streamId",
+            "/eventstreams/{streamId}",
             get(get_stream).patch(update_stream).delete(delete_stream),
         )
         .api_route(
-            "/eventstreams/:streamId/listeners",
+            "/eventstreams/{streamId}/listeners",
             post(create_listener).get(list_listeners),
         )
         .api_route(
-            "/eventstreams/:streamId/listeners/:listenerId",
+            "/eventstreams/{streamId}/listeners/{listenerId}",
             get(get_listener).delete(delete_listener),
         )
         .api_route("/chain/tip", get(get_chain_tip))
