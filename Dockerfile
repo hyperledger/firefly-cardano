@@ -6,6 +6,7 @@ WORKDIR /app
 # Using `cargo chef` to cache dependencies and improve build times
 # See https://github.com/LukeMathWalker/cargo-chef
 FROM base AS planner
+COPY firefly-balius /app/firefly-balius
 COPY firefly-cardanoconnect /app/firefly-cardanoconnect
 COPY firefly-cardanosigner /app/firefly-cardanosigner
 COPY firefly-server /app/firefly-server
@@ -24,6 +25,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --bin firefly-cardanoconnect \
     --bin firefly-cardanosigner \
     --recipe-path recipe.json
+COPY firefly-balius /app/firefly-balius
 COPY firefly-cardanoconnect /app/firefly-cardanoconnect
 COPY firefly-cardanosigner /app/firefly-cardanosigner
 COPY firefly-server /app/firefly-server
