@@ -1128,6 +1128,7 @@ version = "0.1.0"
 dependencies = [
  "balius-sdk",
  "serde",
+ "serde_json",
 ]
 
 [[package]]

@@ -5,8 +5,9 @@ use std::{
 };
 
 use anyhow::{bail, Context, Result};
-use balius_runtime::{ledgers::Ledger, ChainPoint, Response, Runtime, Store};
+use balius_runtime::{kv::Kv, ledgers::Ledger, ChainPoint, Response, Runtime, Store};
 use dashmap::{DashMap, Entry};
+use kv::SqliteKv;
 use ledger::BlockfrostLedger;
 use serde::Deserialize;
 use serde_json::{json, Value};
@@ -19,6 +20,7 @@ use crate::{
     streams::{BlockInfo, BlockReference, Event, Listener, ListenerFilter},
 };
 
+mod kv;
 mod ledger;
 mod u5c;
 
@@ -164,6 +166,10 @@ impl ContractManager {
         if let Some(ledger) = self.ledger.clone() {
             runtime_builder = runtime_builder.with_ledger(ledger);
         }
+
+        let sqlite_path = config.stores_path.join("kv.sqlite3");
+        let kv = SqliteKv::new(&sqlite_path, contract).await?;
+        runtime_builder = runtime_builder.with_kv(Kv::Custom(Arc::new(Mutex::new(kv))));
 
         let mut runtime = runtime_builder.build()?;
 
