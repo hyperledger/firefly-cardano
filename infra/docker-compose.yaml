@@ -1,6 +1,6 @@
 services:
   firefly-core:
-    image: ghcr.io/blockfrost/firefly-cardano
+    image: ghcr.io/gytis-ivaskevicius/firefly-core:latest
     volumes:
       - ./firefly-core.yaml:/etc/firefly/firefly.core.yml:ro
     ports:
