@@ -202,7 +202,7 @@ impl ContractListener {
         for runtime in &self.runtimes {
             let mut lock = runtime.lock().await;
             if let Err(error) = lock.apply(rollbacks, block).await {
-                error!("could not gather events for new blocks: {error}");
+                error!("could not gather events for new blocks: {error:#}");
             }
         }
     }

@@ -1,3 +1,4 @@
+use pallas_crypto::hash::Hasher;
 use pallas_primitives::conway;
 use pallas_traverse::ComputeHash as _;
 use utxorpc_spec::utxorpc::v1alpha::cardano;
@@ -93,7 +94,12 @@ fn convert_tx(bytes: &[u8]) -> cardano::Tx {
     use pallas_primitives::{alonzo, conway};
 
     let real_tx: conway::Tx = minicbor::decode(bytes).unwrap();
-    let mut tx = cardano::Tx::default();
+    let mut tx = cardano::Tx {
+        hash: Hasher::<256>::hash_cbor(&real_tx.transaction_body)
+            .to_vec()
+            .into(),
+        ..cardano::Tx::default()
+    };
     for real_output in real_tx.transaction_body.outputs {
         let mut output = cardano::TxOutput::default();
         match real_output {
