@@ -136,80 +136,49 @@ impl ChainEventStream {
         self.contract.gather_events(&rollbacks, &block).await;
         let mut result = None;
         for rollback in rollbacks {
-            let rollback_ref = rollback.as_reference();
-            let mut backwards = self.collect_backward_tx_events(&rollback);
-            for event in self.contract.events_for(&rollback_ref).await {
-                let event_ref = EventReference {
-                    block: rollback_ref.clone(),
-                    rollback: true,
-                    tx_index: Some(event.id.transaction_index),
-                    log_index: Some(event.id.log_index),
-                };
-                backwards.push((event_ref, event));
-            }
+            let backwards = self.collect_events_for_block(&rollback, true).await;
             result = result.or(backwards.first().cloned());
-            self.cache.insert(rollback_ref, backwards);
+            self.cache.insert(rollback.as_reference(), backwards);
         }
         let block_ref = block.as_reference();
-        let mut events = self.collect_forward_tx_events(&block);
-        for event in self.contract.events_for(&block_ref).await {
-            let event_ref = EventReference {
-                block: block_ref.clone(),
-                rollback: false,
-                tx_index: Some(event.id.transaction_index),
-                log_index: Some(event.id.log_index),
-            };
-            events.push((event_ref, event));
-        }
+        let events = self.collect_events_for_block(&block, false).await;
         result = result.or(events.first().cloned());
         self.cache.insert(block_ref, events);
         result
     }
 
-    fn collect_forward_tx_events(&self, block: &BlockInfo) -> Vec<(EventReference, Event)> {
+    async fn collect_events_for_block(
+        &mut self,
+        block: &BlockInfo,
+        rollback: bool,
+    ) -> Vec<(EventReference, Event)> {
+        let block_ref = block.as_reference();
         let mut events = vec![];
+        let mut contract_events: HashMap<_, Vec<_>> = HashMap::new();
+        for contract_event in self.contract.events_for(&block_ref).await {
+            contract_events
+                .entry(hex::encode(&contract_event.tx_hash))
+                .or_default()
+                .push(contract_event.clone());
+        }
         for (tx_idx, tx_hash) in block.transaction_hashes.iter().enumerate() {
             let tx_idx = tx_idx as u64;
+            let mut log_idx = 0;
             if self.matches_tx_filter(tx_hash) {
-                let id = EventId {
-                    listener_id: self.id.clone(),
-                    signature: "TransactionAccepted(string, string, string)".into(),
-                    block_hash: block.block_hash.clone(),
-                    block_number: block.block_height,
-                    transaction_hash: tx_hash.clone(),
-                    transaction_index: tx_idx,
-                    log_index: 0,
-                    timestamp: Some(SystemTime::now()),
+                let tx_event_signature = if rollback {
+                    "TransactionRolledBack(string, string, string)"
+                } else {
+                    "TransactionAccepted(string, string, string)"
                 };
-                let event = Event {
-                    id,
-                    data: json!({}),
-                };
-                let event_ref = EventReference {
-                    block: block.as_reference(),
-                    rollback: false,
-                    tx_index: Some(tx_idx),
-                    log_index: Some(0),
-                };
-                events.push((event_ref, event));
-            }
-        }
-        events
-    }
 
-    fn collect_backward_tx_events(&self, block: &BlockInfo) -> Vec<(EventReference, Event)> {
-        let mut events = vec![];
-        for (tx_idx, tx_hash) in block.transaction_hashes.iter().enumerate().rev() {
-            let tx_idx = tx_idx as u64;
-            if self.matches_tx_filter(tx_hash) {
                 let id = EventId {
                     listener_id: self.id.clone(),
-                    signature: "TransactionRolledBack(string, string, string)".into(),
+                    signature: tx_event_signature.into(),
                     block_hash: block.block_hash.clone(),
                     block_number: block.block_height,
                     transaction_hash: tx_hash.clone(),
                     transaction_index: tx_idx,
-                    log_index: 0,
+                    log_index: log_idx,
                     timestamp: Some(SystemTime::now()),
                 };
                 let event = Event {
@@ -217,12 +186,37 @@ impl ChainEventStream {
                     data: json!({}),
                 };
                 let event_ref = EventReference {
-                    block: block.as_reference(),
-                    rollback: false,
+                    block: block_ref.clone(),
+                    rollback,
                     tx_index: Some(tx_idx),
-                    log_index: Some(0),
+                    log_index: Some(log_idx),
                 };
                 events.push((event_ref, event));
+                log_idx += 1;
+            }
+            for contract_event in contract_events.remove(tx_hash).into_iter().flatten() {
+                let id = EventId {
+                    listener_id: self.id.clone(),
+                    signature: contract_event.signature,
+                    block_hash: block.block_hash.clone(),
+                    block_number: block.block_height,
+                    transaction_hash: tx_hash.clone(),
+                    transaction_index: tx_idx,
+                    log_index: log_idx,
+                    timestamp: Some(SystemTime::now()),
+                };
+                let event = Event {
+                    id,
+                    data: contract_event.data,
+                };
+                let event_ref = EventReference {
+                    block: block_ref.clone(),
+                    rollback,
+                    tx_index: Some(tx_idx),
+                    log_index: Some(log_idx),
+                };
+                events.push((event_ref, event));
+                log_idx += 1;
             }
         }
         events

@@ -5,8 +5,9 @@ edition = "2021"
 repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
 
 [dependencies]
-balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "cf2791d" }
+balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "e54ec4d" }
 firefly-balius = { path = "../../firefly-balius" }
+hex = "0.4"
 pallas-addresses = "0.32.0"
 pallas-traverse = "0.32.0"
 serde = { version = "1", features = ["derive"] }

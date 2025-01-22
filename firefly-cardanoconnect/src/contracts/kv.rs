@@ -3,6 +3,7 @@ use std::path::Path;
 use anyhow::Result;
 use async_trait::async_trait;
 use balius_runtime::kv::{CustomKv, KvError, Payload};
+use serde::Deserialize;
 use tokio_rusqlite::Connection;
 
 pub struct SqliteKv {
@@ -22,6 +23,14 @@ impl SqliteKv {
         );
         conn.call_unwrap(move |c| c.execute(&sql, [])).await?;
         Ok(Self { conn, table_name })
+    }
+
+    pub async fn get<T: for<'a> Deserialize<'a>>(&mut self, key: String) -> Result<Option<T>> {
+        match self.get_value(key).await {
+            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            Err(KvError::NotFound(_)) => Ok(None),
+            Err(e) => Err(e.into()),
+        }
     }
 }
 

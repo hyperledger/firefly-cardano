@@ -1,5 +1,5 @@
 use std::{
-    collections::{BTreeSet, HashMap},
+    collections::{hash_map, BTreeSet, HashMap},
     path::PathBuf,
     sync::Arc,
 };
@@ -17,7 +17,7 @@ use u5c::convert_block;
 
 use crate::{
     blockfrost::BlockfrostClient,
-    streams::{BlockInfo, BlockReference, Event, Listener, ListenerFilter},
+    streams::{BlockInfo, BlockReference, Listener, ListenerFilter},
 };
 
 mod kv;
@@ -136,27 +136,39 @@ impl ContractManager {
 
     async fn init_contract_runtime(&self, contract: &str) -> Result<()> {
         match self.runtimes.entry(contract.to_string()) {
-            Entry::Vacant(entry) => match self.new_runtime_for(contract).await {
-                Ok(rt) => {
-                    let runtime = ContractRuntime::new(contract, rt).await;
-                    entry.insert(Arc::new(Mutex::new(runtime)));
+            Entry::Vacant(entry) => {
+                let kv = Arc::new(Mutex::new(self.new_kv_for(contract).await?));
+                match self.new_runtime_for(contract, kv.clone()).await {
+                    Ok(rt) => {
+                        let runtime = ContractRuntime::new(contract, kv, rt).await;
+                        entry.insert(Arc::new(Mutex::new(runtime)));
+                    }
+                    Err(err) => {
+                        entry.insert(Arc::new(Mutex::new(ContractRuntime::empty(contract, kv))));
+                        return Err(err);
+                    }
                 }
-                Err(err) => {
-                    entry.insert(Arc::new(Mutex::new(ContractRuntime::empty(contract))));
-                    return Err(err);
-                }
-            },
+            }
             Entry::Occupied(entry) => {
                 let mutex = entry.into_ref();
                 let mut lock = mutex.lock().await;
                 lock.runtime = None; // drop the old runtime before creating the new one
-                lock.runtime = Some(self.new_runtime_for(contract).await?);
+                lock.runtime = Some(self.new_runtime_for(contract, lock.kv.clone()).await?);
             }
         };
         Ok(())
     }
 
-    async fn new_runtime_for(&self, contract: &str) -> Result<Runtime> {
+    async fn new_kv_for(&self, contract: &str) -> Result<SqliteKv> {
+        let Some(config) = self.config.as_ref() else {
+            bail!("No contract directory configured");
+        };
+        let sqlite_path = config.stores_path.join("kv.sqlite3");
+        let kv = SqliteKv::new(&sqlite_path, contract).await?;
+        Ok(kv)
+    }
+
+    async fn new_runtime_for(&self, contract: &str, kv: Arc<Mutex<SqliteKv>>) -> Result<Runtime> {
         let Some(config) = self.config.as_ref() else {
             bail!("No contract directory configured");
         };
@@ -167,9 +179,7 @@ impl ContractManager {
             runtime_builder = runtime_builder.with_ledger(ledger);
         }
 
-        let sqlite_path = config.stores_path.join("kv.sqlite3");
-        let kv = SqliteKv::new(&sqlite_path, contract).await?;
-        runtime_builder = runtime_builder.with_kv(Kv::Custom(Arc::new(Mutex::new(kv))));
+        runtime_builder = runtime_builder.with_kv(Kv::Custom(kv));
 
         let mut runtime = runtime_builder.build()?;
 
@@ -184,7 +194,7 @@ impl ContractManager {
 
 pub struct ContractListener {
     runtimes: Vec<Arc<Mutex<ContractRuntime>>>,
-    cache: HashMap<BlockReference, Vec<Event>>,
+    cache: HashMap<BlockReference, Vec<RawEvent>>,
 }
 
 impl ContractListener {
@@ -195,23 +205,41 @@ impl ContractListener {
                 error!("could not gather events for new blocks: {error}");
             }
         }
-
-        // TODO: actually gather events
     }
 
-    pub async fn events_for(&self, block_ref: &BlockReference) -> Vec<Event> {
-        self.cache.get(block_ref).cloned().unwrap_or_default()
+    pub async fn events_for(&mut self, block_ref: &BlockReference) -> &[RawEvent] {
+        match self.cache.entry(block_ref.clone()) {
+            hash_map::Entry::Occupied(entry) => entry.into_mut(),
+            hash_map::Entry::Vacant(entry) => {
+                let mut events = vec![];
+                for runtime in &self.runtimes {
+                    let mut contract_events = {
+                        let lock = runtime.lock().await;
+                        match lock.events(block_ref).await {
+                            Ok(events) => events,
+                            Err(error) => {
+                                error!("could not retrieve events for block: {error}");
+                                continue;
+                            }
+                        }
+                    };
+                    events.append(&mut contract_events);
+                }
+                entry.insert(events)
+            }
+        }
     }
 }
 
 struct ContractRuntime {
     contract: String,
+    kv: Arc<Mutex<SqliteKv>>,
     runtime: Option<Runtime>,
     head: BlockReference,
 }
 
 impl ContractRuntime {
-    async fn new(contract: &str, runtime: Runtime) -> Self {
+    async fn new(contract: &str, kv: Arc<Mutex<SqliteKv>>, runtime: Runtime) -> Self {
         let head = match runtime.chain_cursor().await {
             Ok(Some(ChainPoint::Cardano(r))) => {
                 BlockReference::Point(Some(r.index), hex::encode(r.hash))
@@ -220,13 +248,15 @@ impl ContractRuntime {
         };
         Self {
             contract: contract.to_string(),
+            kv,
             runtime: Some(runtime),
             head,
         }
     }
-    fn empty(contract: &str) -> Self {
+    fn empty(contract: &str, kv: Arc<Mutex<SqliteKv>>) -> Self {
         Self {
             contract: contract.to_string(),
+            kv,
             runtime: None,
             head: BlockReference::Origin,
         }
@@ -269,6 +299,18 @@ impl ContractRuntime {
 
         Ok(())
     }
+
+    async fn events(&self, block_ref: &BlockReference) -> Result<Vec<RawEvent>> {
+        let key = match block_ref {
+            BlockReference::Origin => {
+                return Ok(vec![]);
+            }
+            BlockReference::Point(_, hash) => format!("__events_{hash}"),
+        };
+        let mut lock = self.kv.lock().await;
+        let raw_events: Vec<RawEvent> = lock.get(key).await?.unwrap_or_default();
+        Ok(raw_events)
+    }
 }
 
 fn find_contract_names(filters: &[ListenerFilter]) -> Vec<String> {
@@ -279,4 +321,11 @@ fn find_contract_names(filters: &[ListenerFilter]) -> Vec<String> {
         }
     }
     result.into_iter().collect()
+}
+
+#[derive(Clone, Deserialize)]
+pub struct RawEvent {
+    pub tx_hash: Vec<u8>,
+    pub signature: String,
+    pub data: serde_json::Value,
 }

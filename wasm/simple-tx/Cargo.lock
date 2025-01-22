@@ -94,7 +94,7 @@ dependencies = [
 [[package]]
 name = "balius-macros"
 version = "0.1.0"
-source = "git+https://github.com/txpipe/balius.git?rev=cf2791d#cf2791d63658cd062384a11d2322480ba8f82039"
+source = "git+https://github.com/txpipe/balius.git?rev=e54ec4d#e54ec4d56a52f0f8097bb253f259fae4ecb64d34"
 dependencies = [
  "quote",
  "syn",
@@ -103,7 +103,7 @@ dependencies = [
 [[package]]
 name = "balius-sdk"
 version = "0.1.0"
-source = "git+https://github.com/txpipe/balius.git?rev=cf2791d#cf2791d63658cd062384a11d2322480ba8f82039"
+source = "git+https://github.com/txpipe/balius.git?rev=e54ec4d#e54ec4d56a52f0f8097bb253f259fae4ecb64d34"
 dependencies = [
  "balius-macros",
  "hex",
@@ -302,6 +302,7 @@ name = "firefly-balius"
 version = "0.1.0"
 dependencies = [
  "balius-sdk",
+ "hex",
  "serde",
  "serde_json",
 ]
@@ -1089,6 +1090,7 @@ version = "0.1.0"
 dependencies = [
  "balius-sdk",
  "firefly-balius",
+ "hex",
  "pallas-addresses 0.32.0",
  "pallas-traverse 0.32.0",
  "serde",
