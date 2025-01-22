@@ -1,0 +1,48 @@
+admin:
+  address: 0.0.0.0
+  enabled: true
+  port: 5101
+  publicURL: http://127.0.0.1:5101
+debug:
+  port: 6060
+event:
+  dbevents:
+    bufferSize: 10000
+http:
+  address: 0.0.0.0
+  port: 5000
+  publicURL: http://127.0.0.1:5000
+log:
+  level: debug
+metrics: {}
+namespaces:
+  default: default
+  predefined:
+  - defaultKey: addr_test1vqhkukz0285zvk0xrwk9jlq0075tx6furuzcjvzpnhtgelsuhhqc4
+    description: Default predefined namespace
+    name: default
+    plugins:
+    - database0
+    - blockchain0
+plugins:
+  blockchain:
+  - cardano:
+      cardanoconnect:
+        topic: "0"
+        url: http://firefly-cardanoconnect:5018
+    name: blockchain0
+    type: cardano
+  database:
+  - name: database0
+    postgres:
+      migrations:
+        auto: true
+      url: postgres://postgres:f1refly@postgres:5432?sslmode=disable
+    type: postgres
+spi:
+  address: 0.0.0.0
+  enabled: true
+  port: 5101
+  publicURL: http://127.0.0.1:5101
+ui:
+  path: ./frontend
