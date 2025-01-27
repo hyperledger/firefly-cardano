@@ -113,14 +113,14 @@ impl ContractManager {
     }
 
     pub async fn listen(&self, listener: &Listener) -> ContractListener {
-        let contracts = find_contract_names(&listener.filters);
-        let mut runtimes = vec![];
-        for contract in contracts {
+        let contract_filters = find_contract_filters(&listener.filters);
+        let mut contracts = vec![];
+        for (contract, filters) in contract_filters {
             let runtime = self.get_contract_runtime(&contract).await;
-            runtimes.push(runtime);
+            contracts.push(ContractListenerContract { filters, runtime });
         }
         ContractListener {
-            runtimes,
+            contracts,
             cache: HashMap::new(),
         }
     }
@@ -193,14 +193,19 @@ impl ContractManager {
 }
 
 pub struct ContractListener {
-    runtimes: Vec<Arc<Mutex<ContractRuntime>>>,
+    contracts: Vec<ContractListenerContract>,
     cache: HashMap<BlockReference, Vec<RawEvent>>,
+}
+
+struct ContractListenerContract {
+    filters: BTreeSet<String>,
+    runtime: Arc<Mutex<ContractRuntime>>,
 }
 
 impl ContractListener {
     pub async fn gather_events(&self, rollbacks: &[BlockInfo], block: &BlockInfo) {
-        for runtime in &self.runtimes {
-            let mut lock = runtime.lock().await;
+        for contract in &self.contracts {
+            let mut lock = contract.runtime.lock().await;
             if let Err(error) = lock.apply(rollbacks, block).await {
                 error!("could not gather events for new blocks: {error:#}");
             }
@@ -212,9 +217,9 @@ impl ContractListener {
             hash_map::Entry::Occupied(entry) => entry.into_mut(),
             hash_map::Entry::Vacant(entry) => {
                 let mut events = vec![];
-                for runtime in &self.runtimes {
-                    let mut contract_events = {
-                        let lock = runtime.lock().await;
+                for contract in &self.contracts {
+                    let contract_events = {
+                        let lock = contract.runtime.lock().await;
                         match lock.events(block_ref).await {
                             Ok(events) => events,
                             Err(error) => {
@@ -223,7 +228,15 @@ impl ContractListener {
                             }
                         }
                     };
-                    events.append(&mut contract_events);
+                    for event in contract_events {
+                        if contract
+                            .filters
+                            .iter()
+                            .any(|f| event.signature.starts_with(f))
+                        {
+                            events.push(event);
+                        }
+                    }
                 }
                 entry.insert(events)
             }
@@ -313,14 +326,21 @@ impl ContractRuntime {
     }
 }
 
-fn find_contract_names(filters: &[ListenerFilter]) -> Vec<String> {
-    let mut result = BTreeSet::new();
+fn find_contract_filters(filters: &[ListenerFilter]) -> HashMap<String, BTreeSet<String>> {
+    let mut result: HashMap<String, BTreeSet<String>> = HashMap::new();
     for filter in filters {
-        if let ListenerFilter::Event { contract, .. } = filter {
-            result.insert(contract.clone());
+        if let ListenerFilter::Event {
+            contract,
+            event_path,
+        } = filter
+        {
+            result
+                .entry(contract.clone())
+                .or_default()
+                .insert(event_path.clone());
         }
     }
-    result.into_iter().collect()
+    result
 }
 
 #[derive(Clone, Deserialize)]
