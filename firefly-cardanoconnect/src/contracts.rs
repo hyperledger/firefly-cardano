@@ -4,16 +4,16 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{bail, Context, Result};
-use balius_runtime::{kv::Kv, ledgers::Ledger, ChainPoint, Response, Runtime, Store};
+use anyhow::{bail, Result};
+use balius_runtime::{ledgers::Ledger, Response};
 use dashmap::{DashMap, Entry};
-use kv::SqliteKv;
 use ledger::BlockfrostLedger;
+use runtime::ContractRuntime;
+pub use runtime::RawEvent;
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::{fs, sync::Mutex};
 use tracing::{error, warn};
-use u5c::convert_block;
 
 use crate::{
     blockfrost::BlockfrostClient,
@@ -22,6 +22,7 @@ use crate::{
 
 mod kv;
 mod ledger;
+mod runtime;
 mod u5c;
 
 #[derive(Debug, Deserialize, Clone)]
@@ -35,7 +36,7 @@ pub struct ContractsConfig {
 pub struct ContractManager {
     config: Option<ContractsConfig>,
     ledger: Option<Ledger>,
-    runtimes: DashMap<String, Arc<Mutex<ContractRuntime>>>,
+    runtimes: DashMap<String, ContractRuntime>,
 }
 
 impl ContractManager {
@@ -90,10 +91,9 @@ impl ContractManager {
         method: &str,
         params: Value,
     ) -> Result<Option<Vec<u8>>> {
-        let Some(mutex) = self.runtimes.get(contract) else {
+        let Some(runtime) = self.runtimes.get(contract) else {
             bail!("unrecognized contract {contract}");
         };
-        let mut runtime = mutex.lock().await;
         let response = runtime.invoke(method, params).await?;
         match response {
             Response::PartialTx(bytes) => Ok(Some(bytes)),
@@ -107,9 +107,7 @@ impl ContractManager {
             "hash": tx_id,
         });
         let runtime = self.get_contract_runtime(contract).await;
-        let mut lock = runtime.lock().await;
-
-        let _: Result<_, _> = lock.invoke("__tx_submitted", params).await;
+        let _: Result<_, _> = runtime.invoke("__tx_submitted", params).await;
     }
 
     pub async fn listen(&self, listener: &Listener) -> ContractListener {
@@ -125,7 +123,7 @@ impl ContractManager {
         }
     }
 
-    async fn get_contract_runtime(&self, contract: &str) -> Arc<Mutex<ContractRuntime>> {
+    async fn get_contract_runtime(&self, contract: &str) -> ContractRuntime {
         if !self.runtimes.contains_key(contract) {
             if let Err(error) = self.init_contract_runtime(contract).await {
                 warn!("Could not init contract {contract}: {error}");
@@ -135,61 +133,19 @@ impl ContractManager {
     }
 
     async fn init_contract_runtime(&self, contract: &str) -> Result<()> {
-        match self.runtimes.entry(contract.to_string()) {
-            Entry::Vacant(entry) => {
-                let kv = Arc::new(Mutex::new(self.new_kv_for(contract).await?));
-                match self.new_runtime_for(contract, kv.clone()).await {
-                    Ok(rt) => {
-                        let runtime = ContractRuntime::new(contract, kv, rt).await;
-                        entry.insert(Arc::new(Mutex::new(runtime)));
-                    }
-                    Err(err) => {
-                        entry.insert(Arc::new(Mutex::new(ContractRuntime::empty(contract, kv))));
-                        return Err(err);
-                    }
-                }
-            }
-            Entry::Occupied(entry) => {
-                let mutex = entry.into_ref();
-                let mut lock = mutex.lock().await;
-                lock.runtime = None; // drop the old runtime before creating the new one
-                lock.runtime = Some(self.new_runtime_for(contract, lock.kv.clone()).await?);
-            }
+        let runtime = match self.runtimes.entry(contract.to_string()) {
+            Entry::Vacant(entry) => entry.insert(
+                ContractRuntime::new(contract, self.config.as_ref(), self.ledger.clone()).await,
+            ),
+            Entry::Occupied(entry) => entry.into_ref(),
         };
-        Ok(())
+        runtime.init().await
     }
+}
 
-    async fn new_kv_for(&self, contract: &str) -> Result<SqliteKv> {
-        let Some(config) = self.config.as_ref() else {
-            bail!("No contract directory configured");
-        };
-        let sqlite_path = config.stores_path.join("kv.sqlite3");
-        let kv = SqliteKv::new(&sqlite_path, contract).await?;
-        Ok(kv)
-    }
-
-    async fn new_runtime_for(&self, contract: &str, kv: Arc<Mutex<SqliteKv>>) -> Result<Runtime> {
-        let Some(config) = self.config.as_ref() else {
-            bail!("No contract directory configured");
-        };
-        let store_path = config.stores_path.join(contract).with_extension("redb");
-        let store = Store::open(&store_path, config.cache_size)?;
-        let mut runtime_builder = Runtime::builder(store);
-        if let Some(ledger) = self.ledger.clone() {
-            runtime_builder = runtime_builder.with_ledger(ledger);
-        }
-
-        runtime_builder = runtime_builder.with_kv(Kv::Custom(kv));
-
-        let mut runtime = runtime_builder.build()?;
-
-        let wasm_path = config.components_path.join(contract).with_extension("wasm");
-        runtime
-            .register_worker(contract, wasm_path, json!(null))
-            .await?;
-
-        Ok(runtime)
-    }
+struct ContractListenerContract {
+    filters: BTreeSet<String>,
+    runtime: ContractRuntime,
 }
 
 pub struct ContractListener {
@@ -197,16 +153,10 @@ pub struct ContractListener {
     cache: HashMap<BlockReference, Vec<RawEvent>>,
 }
 
-struct ContractListenerContract {
-    filters: BTreeSet<String>,
-    runtime: Arc<Mutex<ContractRuntime>>,
-}
-
 impl ContractListener {
     pub async fn gather_events(&self, rollbacks: &[BlockInfo], block: &BlockInfo) {
         for contract in &self.contracts {
-            let mut lock = contract.runtime.lock().await;
-            if let Err(error) = lock.apply(rollbacks, block).await {
+            if let Err(error) = contract.runtime.apply(rollbacks, block).await {
                 error!("could not gather events for new blocks: {error:#}");
             }
         }
@@ -218,14 +168,11 @@ impl ContractListener {
             hash_map::Entry::Vacant(entry) => {
                 let mut events = vec![];
                 for contract in &self.contracts {
-                    let contract_events = {
-                        let lock = contract.runtime.lock().await;
-                        match lock.events(block_ref).await {
-                            Ok(events) => events,
-                            Err(error) => {
-                                error!("could not retrieve events for block: {error}");
-                                continue;
-                            }
+                    let contract_events = match contract.runtime.events(block_ref).await {
+                        Ok(events) => events,
+                        Err(error) => {
+                            error!("could not retrieve events for block: {error}");
+                            continue;
                         }
                     };
                     for event in contract_events {
@@ -244,88 +191,6 @@ impl ContractListener {
     }
 }
 
-struct ContractRuntime {
-    contract: String,
-    kv: Arc<Mutex<SqliteKv>>,
-    runtime: Option<Runtime>,
-    head: BlockReference,
-}
-
-impl ContractRuntime {
-    async fn new(contract: &str, kv: Arc<Mutex<SqliteKv>>, runtime: Runtime) -> Self {
-        let head = match runtime.chain_cursor().await {
-            Ok(Some(ChainPoint::Cardano(r))) => {
-                BlockReference::Point(Some(r.index), hex::encode(r.hash))
-            }
-            _ => BlockReference::Origin,
-        };
-        Self {
-            contract: contract.to_string(),
-            kv,
-            runtime: Some(runtime),
-            head,
-        }
-    }
-    fn empty(contract: &str, kv: Arc<Mutex<SqliteKv>>) -> Self {
-        Self {
-            contract: contract.to_string(),
-            kv,
-            runtime: None,
-            head: BlockReference::Origin,
-        }
-    }
-
-    async fn invoke(&mut self, method: &str, params: Value) -> Result<Response> {
-        let params = serde_json::to_vec(&params)?;
-        let Some(runtime) = self.runtime.as_mut() else {
-            bail!("Contract {} failed to initialize", self.contract);
-        };
-        Ok(runtime
-            .handle_request(&self.contract, method, params)
-            .await?)
-    }
-
-    async fn apply(&mut self, rollbacks: &[BlockInfo], block: &BlockInfo) -> Result<()> {
-        let Some(runtime) = self.runtime.as_mut() else {
-            bail!("Contract {} failed to initialize", self.contract);
-        };
-
-        if rollbacks
-            .first()
-            .is_some_and(|rb| rb.as_reference() != self.head)
-        {
-            // this is a rollback from a point we're not already at, ignore it
-            return Ok(());
-        } else if block.as_reference() <= self.head {
-            // we've already advanced past this point
-            return Ok(());
-        }
-
-        let undo_blocks = rollbacks.iter().map(convert_block).collect();
-        let next_block = convert_block(block);
-        runtime
-            .handle_chain(&undo_blocks, &next_block)
-            .await
-            .context("could not apply blocks")?;
-
-        self.head = block.as_reference();
-
-        Ok(())
-    }
-
-    async fn events(&self, block_ref: &BlockReference) -> Result<Vec<RawEvent>> {
-        let key = match block_ref {
-            BlockReference::Origin => {
-                return Ok(vec![]);
-            }
-            BlockReference::Point(_, hash) => format!("__events_{hash}"),
-        };
-        let mut lock = self.kv.lock().await;
-        let raw_events: Vec<RawEvent> = lock.get(key).await?.unwrap_or_default();
-        Ok(raw_events)
-    }
-}
-
 fn find_contract_filters(filters: &[ListenerFilter]) -> HashMap<String, BTreeSet<String>> {
     let mut result: HashMap<String, BTreeSet<String>> = HashMap::new();
     for filter in filters {
@@ -341,11 +206,4 @@ fn find_contract_filters(filters: &[ListenerFilter]) -> HashMap<String, BTreeSet
         }
     }
     result
-}
-
-#[derive(Clone, Deserialize)]
-pub struct RawEvent {
-    pub tx_hash: Vec<u8>,
-    pub signature: String,
-    pub data: serde_json::Value,
 }
