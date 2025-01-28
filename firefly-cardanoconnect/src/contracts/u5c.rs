@@ -5,6 +5,15 @@ use utxorpc_spec::utxorpc::v1alpha::cardano;
 
 use crate::streams::BlockInfo;
 
+fn hash_tx(data: &[u8]) -> Vec<u8> {
+    let mut decoder = minicbor::Decoder::new(data);
+    decoder.array().unwrap();
+    let start = decoder.position();
+    decoder.skip().unwrap();
+    let end = decoder.position();
+    Hasher::<256>::hash(&data[start..end]).to_vec()
+}
+
 fn convert_plutus_data(data: conway::PlutusData) -> cardano::PlutusData {
     let inner = match data {
         conway::PlutusData::Constr(con) => {
@@ -93,13 +102,11 @@ fn convert_native_script(script: conway::NativeScript) -> cardano::NativeScript 
 fn convert_tx(bytes: &[u8]) -> cardano::Tx {
     use pallas_primitives::{alonzo, conway};
 
-    let real_tx: conway::Tx = minicbor::decode(bytes).unwrap();
     let mut tx = cardano::Tx {
-        hash: Hasher::<256>::hash_cbor(&real_tx.transaction_body)
-            .to_vec()
-            .into(),
+        hash: hash_tx(bytes).into(),
         ..cardano::Tx::default()
     };
+    let real_tx: conway::Tx = minicbor::decode(bytes).unwrap();
     for real_output in real_tx.transaction_body.outputs {
         let mut output = cardano::TxOutput::default();
         match real_output {
