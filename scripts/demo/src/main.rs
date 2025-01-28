@@ -18,8 +18,6 @@ struct Args {
     amount: u64,
     #[arg(long, default_value = "http://localhost:5018")]
     firefly_cardano_url: String,
-    #[arg(long, default_value = "4")]
-    rollback_horizon: u64,
 }
 
 async fn create_or_get_stream(firefly: &FireflyCardanoClient, name: &str) -> Result<String> {
@@ -116,17 +114,15 @@ async fn main() -> Result<()> {
         &stream_id,
         &format!("listener-{txid}"),
         &from_block,
-        vec![ListenerFilter::TransactionId(txid.clone())],
-    )
-    .await?;
-
-    // Here we create another that listens to every transaction, so we can track the block height
-    let all_txs_listener_id = create_listener(
-        &firefly,
-        &stream_id,
-        "listener-all",
-        &from_block,
-        vec![ListenerFilter::TransactionId("any".into())],
+        vec![
+            // The cardano connector emits generic lifecycle events for transactions
+            ListenerFilter::TransactionId(txid.clone()),
+            // And the contract emits a custom event when the transaction has been "finalized"
+            ListenerFilter::Event {
+                contract: "simple-tx".into(),
+                event_path: "TransactionFinalized".into(),
+            },
+        ],
     )
     .await?;
 
@@ -142,7 +138,6 @@ async fn main() -> Result<()> {
     .await?;
 
     println!("listening for events");
-    let mut block_height_when_final = None;
     while let Some(msg) = ws.next().await {
         let message = msg?;
         let batch: FireflyWebSocketEventBatch = match message.try_into() {
@@ -154,24 +149,35 @@ async fn main() -> Result<()> {
         };
         println!("received message batch {batch:?}");
         for event in batch.events {
-            if event.listener_id == tx_listener_id {
-                assert_eq!(event.transaction_hash, txid);
-                if event.signature.starts_with("TransactionAccepted") {
-                    println!("our transaction was accepted in block #{}! waiting for {} more blocks to be sure it won't roll back...", event.block_number, args.rollback_horizon);
-                    block_height_when_final = Some(event.block_number + args.rollback_horizon);
-                }
-                if event.signature.starts_with("TransactionRolledBack") {
-                    bail!("our transaction was rolled back...");
-                }
+            if event.listener_id != tx_listener_id {
+                continue;
+            }
+
+            if event.signature.starts_with("TransactionAccepted") && event.transaction_hash == txid
+            {
+                println!("our transaction was accepted in block #{}! waiting for the contract to decide it was finalized", event.block_number);
+            }
+            if event.signature.starts_with("TransactionRolledBack")
+                && event.transaction_hash == txid
+            {
+                bail!("our transaction was rolled back...");
             }
             #[allow(clippy::collapsible_if)]
-            if event.listener_id == all_txs_listener_id {
-                if block_height_when_final.is_some_and(|h| event.block_number >= h) {
-                    println!(
-                        "alright it's been long enough, this transaction is probably final by now"
-                    );
-                    return Ok(());
+            if event.signature.starts_with("TransactionFinalized") {
+                if event
+                    .data
+                    .as_object()
+                    .and_then(|o| o.get("tx_id"))
+                    .and_then(|id| id.as_str())
+                    .is_none_or(|id| id != txid)
+                {
+                    continue;
                 }
+                println!(
+                    "as of block {}, our transaction is finalized!",
+                    event.block_number
+                );
+                return Ok(());
             }
         }
         ws.send(
