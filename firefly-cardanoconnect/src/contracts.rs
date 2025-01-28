@@ -45,6 +45,7 @@ impl ContractManager {
         blockfrost: Option<BlockfrostClient>,
     ) -> Result<Self> {
         fs::create_dir_all(&config.components_path).await?;
+        fs::create_dir_all(&config.stores_path).await?;
         let ledger = blockfrost.map(|client| {
             let ledger = BlockfrostLedger::new(client);
             Ledger::Custom(Arc::new(Mutex::new(ledger)))
