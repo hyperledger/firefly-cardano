@@ -19,10 +19,13 @@ To setup the components, you need a valid Blockfrost key, you can either [get it
 
 ### Run it with Docker compose
 
+Requires at least Docker Compose version 2.22.0, uses Compose Watch: <https://docs.docker.com/compose/how-tos/file-watch/>
+
 The easier way to get started is to use Docker compose to build your entire cluster.
+
 ```
 # For solitary, run:
-BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX docker compose up --build -d
+BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX docker compose -f infra/docker-compose.yaml up --build -d
 
 # Watch the build
 docker compose watch
@@ -31,10 +34,13 @@ docker compose watch
 ### Demo application to showcase the Cardano Firefly connector
 
 - Export your blockfrost key:
+
   ```
   export BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX
   ```
+
 - Create Cardano wallet and put the signing key in `infra/wallet/${address}.skey`
+
   ```
     cardano-cli address key-gen --verification-key-file firefly.vkey --signing-key-file firefly.skey
     cardano-cli address build --payment-verification-key-file firefly.vkey --out-file firefly.addr
@@ -42,11 +48,14 @@ docker compose watch
     cp firefly.skey infra/wallet/$(cat firefly.addr).skey
     rm firefly.vkey firefly.skey firefly.addr
   ```
+
 - To start up the connector please execute:
+
   ```bash
   BLOCKFROST_KEY=previewXX docker compose -f ./infra/docker-compose.node.yaml -f ./infra/docker-compose.yaml -p preview up --build -d
   docker compose -f ./infra/docker-compose.yaml -p preview watch # Auto rebuild on changes
   ```
+
   > **_NOTE:_** If you want to avoid running it in the background, omit the `-d` flag.
 
   > **_NOTE:_** If you want to skip building, omit the `--build` flag.
