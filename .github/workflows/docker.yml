@@ -53,7 +53,7 @@ jobs:
         id: firefly-cardanoconnect-meta
         uses: docker/metadata-action@v5.6.1
         with:
-          images: ghcr.io/blockfrost/firefly-cardanoconnect
+          images: ghcr.io/hyperledger/firefly-cardanoconnect
       - name: Build and push Docker image for firefly-cardanoconnect
         id: firefly-cardanoconnect-push
         uses: docker/build-push-action@v6.10.0
@@ -71,12 +71,11 @@ jobs:
         id: firefly-cardanosigner-meta
         uses: docker/metadata-action@v5.6.1
         with:
-          images: ghcr.io/blockfrost/firefly-cardanosigner
+          images: ghcr.io/hyperledger/firefly-cardanosigner
       - name: Build and push Docker image for firefly-cardanosigner
         id: firefly-cardanosigner-push
         uses: docker/build-push-action@v6.10.0
         with:
-          registry: ghcr.io
           cache-from: type=gha
           cache-to: type=gha,mode=max
           context: .

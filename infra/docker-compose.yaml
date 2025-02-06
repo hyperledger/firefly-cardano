@@ -40,7 +40,7 @@ services:
         retries: 12
 
   firefly-cardanoconnect:
-    image: ghcr.io/blockfrost/firefly-cardanoconnect:main
+    image: ghcr.io/hyperledger/firefly-cardanoconnect:main
     build:
       context: ..
       target: firefly-cardanoconnect
@@ -59,7 +59,7 @@ services:
       - ./connect.yaml:/app/config.yaml
 
   firefly-cardanosigner:
-    image: ghcr.io/blockfrost/firefly-cardanosigner:main
+    image: ghcr.io/hyperledger/firefly-cardanosigner:main
     build:
       context: ..
       target: firefly-cardanosigner
