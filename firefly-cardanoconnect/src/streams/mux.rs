@@ -194,7 +194,7 @@ impl StreamDispatcher {
                 stream_id: stream.id,
                 batch_size: stream.batch_size,
                 batch_timeout: stream.batch_timeout,
-                batch_number: 0,
+                batch_number: 1,
                 listeners,
                 hwms,
                 persistence,

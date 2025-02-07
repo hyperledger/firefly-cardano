@@ -83,6 +83,9 @@ async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result
             }
             error!("client couldn't process batch: {}", err.message);
         }
+        IncomingMessage::ListenReplies => {
+            // do nothing, we already send replies whether they ask or not
+        }
         other => {
             bail!("unexpected response to batch! {:?}", other);
         }
@@ -135,9 +138,10 @@ struct ErrorMessage {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "lowercase")]
 enum IncomingMessage {
     Listen(ListenMessage),
+    ListenReplies,
     Ack(AckMessage),
     Error(ErrorMessage),
 }
