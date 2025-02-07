@@ -55,7 +55,7 @@ services:
       - 5018:5018
     volumes:
       - connect-contracts:/contracts
-      - ./db:/db
+      - connect-db:/db
       - ./connect.yaml:/app/config.yaml
 
   firefly-cardanosigner:
