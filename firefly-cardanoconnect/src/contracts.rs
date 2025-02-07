@@ -8,8 +8,8 @@ use anyhow::{bail, Result};
 use balius_runtime::{ledgers::Ledger, Response};
 use dashmap::{DashMap, Entry};
 use ledger::BlockfrostLedger;
+pub use runtime::ContractEvent;
 use runtime::ContractRuntime;
-pub use runtime::RawEvent;
 use serde::Deserialize;
 use serde_json::Value;
 use tokio::{fs, sync::Mutex};
@@ -151,7 +151,7 @@ struct ContractListenerContract {
 
 pub struct ContractListener {
     contracts: Vec<ContractListenerContract>,
-    cache: HashMap<BlockReference, Vec<RawEvent>>,
+    cache: HashMap<BlockReference, Vec<ContractEvent>>,
 }
 
 impl ContractListener {
@@ -163,7 +163,7 @@ impl ContractListener {
         }
     }
 
-    pub async fn events_for(&mut self, block_ref: &BlockReference) -> &[RawEvent] {
+    pub async fn events_for(&mut self, block_ref: &BlockReference) -> &[ContractEvent] {
         match self.cache.entry(block_ref.clone()) {
             hash_map::Entry::Occupied(entry) => entry.into_mut(),
             hash_map::Entry::Vacant(entry) => {

@@ -123,6 +123,7 @@ pub struct BlockRecord {
 #[derive(Clone, Debug)]
 pub struct EventId {
     pub listener_id: ListenerId,
+    pub address: Option<String>,
     pub signature: String,
     pub block_hash: String,
     pub block_number: Option<u64>,

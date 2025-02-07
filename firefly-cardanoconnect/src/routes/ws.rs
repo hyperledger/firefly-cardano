@@ -49,6 +49,7 @@ async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result
             .iter()
             .map(|e| Event {
                 listener_id: Some(e.id.listener_id.clone().into()),
+                address: e.id.address.clone(),
                 signature: e.id.signature.clone(),
                 block_number: e.id.block_number,
                 block_hash: e.id.block_hash.clone(),
@@ -170,6 +171,7 @@ async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>>
 #[serde(rename_all = "camelCase")]
 struct Event {
     listener_id: Option<String>,
+    address: Option<String>,
     signature: String,
     block_hash: String,
     block_number: Option<u64>,

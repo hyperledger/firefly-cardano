@@ -100,7 +100,7 @@ impl ContractRuntime {
         rx.await?
     }
 
-    pub async fn events(&self, block_ref: &BlockReference) -> Result<Vec<RawEvent>> {
+    pub async fn events(&self, block_ref: &BlockReference) -> Result<Vec<ContractEvent>> {
         let key = match block_ref {
             BlockReference::Origin => {
                 return Ok(vec![]);
@@ -112,7 +112,15 @@ impl ContractRuntime {
         };
         let mut lock = kv.lock().await;
         let raw_events: Vec<RawEvent> = lock.get(key).await?.unwrap_or_default();
-        Ok(raw_events)
+        Ok(raw_events
+            .into_iter()
+            .map(|e| ContractEvent {
+                address: self.contract.clone(),
+                tx_hash: hex::encode(e.tx_hash),
+                signature: e.signature,
+                data: e.data,
+            })
+            .collect())
     }
 }
 
@@ -264,8 +272,16 @@ impl ContractRuntimeWorker {
     }
 }
 
+#[derive(Clone)]
+pub struct ContractEvent {
+    pub address: String,
+    pub tx_hash: String,
+    pub signature: String,
+    pub data: serde_json::Value,
+}
+
 #[derive(Clone, Deserialize)]
-pub struct RawEvent {
+struct RawEvent {
     pub tx_hash: Vec<u8>,
     pub signature: String,
     pub data: serde_json::Value,

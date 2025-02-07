@@ -157,7 +157,7 @@ impl ChainEventStream {
         let mut contract_events: HashMap<_, Vec<_>> = HashMap::new();
         for contract_event in self.contract.events_for(&block_ref).await {
             contract_events
-                .entry(hex::encode(&contract_event.tx_hash))
+                .entry(contract_event.tx_hash.clone())
                 .or_default()
                 .push(contract_event.clone());
         }
@@ -173,6 +173,7 @@ impl ChainEventStream {
 
                 let id = EventId {
                     listener_id: self.id.clone(),
+                    address: None,
                     signature: tx_event_signature.into(),
                     block_hash: block.block_hash.clone(),
                     block_number: block.block_height,
@@ -197,6 +198,7 @@ impl ChainEventStream {
             for contract_event in contract_events.remove(tx_hash).into_iter().flatten() {
                 let id = EventId {
                     listener_id: self.id.clone(),
+                    address: Some(contract_event.address),
                     signature: contract_event.signature,
                     block_hash: block.block_hash.clone(),
                     block_number: block.block_height,
