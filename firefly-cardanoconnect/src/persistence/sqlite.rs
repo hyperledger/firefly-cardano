@@ -321,18 +321,20 @@ impl Persistence for SqlitePersistence {
                 let status = op.status.name();
                 let error_message = op.status.error_message();
                 c.prepare_cached(
-                    "INSERT INTO operations (id, status, error_message, tx_id)
-                    VALUES (?1, ?2, ?3, ?4)
+                    "INSERT INTO operations (id, status, error_message, tx_id, contract_address)
+                    VALUES (?1, ?2, ?3, ?4, ?5)
                     ON CONFLICT(id) DO UPDATE SET
                         status=excluded.status,
                         error_message=excluded.error_message,
-                        tx_id=excluded.tx_id",
+                        tx_id=excluded.tx_id,
+                        contract_address=excluded.contract_address",
                 )?
                 .execute(params![
                     op.id.to_string(),
                     status,
                     error_message,
                     op.tx_id,
+                    op.contract_address,
                 ])?;
                 Ok(())
             })
@@ -345,7 +347,7 @@ impl Persistence for SqlitePersistence {
             .call_unwrap(move |c| {
                 let Some(op) = c
                     .prepare_cached(
-                        "SELECT id, status, error_message, tx_id
+                        "SELECT id, status, error_message, tx_id, contract_address
                         FROM operations
                         WHERE id = ?1",
                     )?
@@ -437,10 +439,12 @@ fn parse_operation(row: &Row) -> Result<Operation> {
         },
     };
     let tx_id: Option<String> = row.get("tx_id")?;
+    let contract_address: Option<String> = row.get("contract_address")?;
     Ok(Operation {
         id: id.into(),
         status,
         tx_id,
+        contract_address,
     })
 }
 

@@ -43,6 +43,7 @@ impl OperationsManager {
             id,
             status: OperationStatus::Pending,
             tx_id: None,
+            contract_address: Some(name.to_string()),
         };
         self.update_operation(&op).await?;
         match self.contracts.deploy(name, contract).await {
@@ -71,6 +72,7 @@ impl OperationsManager {
             id,
             status: OperationStatus::Pending,
             tx_id: None,
+            contract_address: None,
         };
         self.update_operation(&op).await?;
         let result = self.contracts.invoke(contract, method, params).await;

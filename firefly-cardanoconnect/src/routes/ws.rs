@@ -102,6 +102,9 @@ async fn send_operation(socket: &mut WebSocket, op: Operation) -> Result<()> {
         },
         transaction_hash: op.tx_id.clone(),
         error_message: op.status.error_message().map(|m| m.to_string()),
+        contract_location: op
+            .contract_address
+            .map(|address| ContractLocation { address }),
     };
     let outgoing_json = serde_json::to_string(&operation)?;
     socket.send(Message::Text(outgoing_json.into())).await?;
@@ -195,6 +198,7 @@ struct OutgoingOperation {
     headers: OperationHeaders,
     transaction_hash: Option<String>,
     error_message: Option<String>,
+    contract_location: Option<ContractLocation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -203,6 +207,11 @@ struct OperationHeaders {
     request_id: String,
     #[serde(rename = "type")]
     type_: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ContractLocation {
+    address: String,
 }
 
 pub async fn handle_socket_upgrade(
