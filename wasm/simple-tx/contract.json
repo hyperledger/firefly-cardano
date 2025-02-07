@@ -1,0 +1,61 @@
+{
+  "name": "simple-tx",
+  "description": "Simple TX submission contract",
+  "networkName": "simple-tx",
+  "version": "0.1.0",
+  "errors": [],
+  "methods": [
+    {
+      "description": "Sends ADA to a wallet",
+      "details": {},
+      "name": "send_ada",
+      "params": [
+        {
+          "name": "fromAddress",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "toAddress",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "returns": []
+    }
+  ],
+  "events": [
+    {
+      "name": "TransactionSubmitted",
+      "description": "",
+      "params": [
+        {
+          "name": "transactionId",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    {
+      "name": "TransactionFinalized",
+      "description": "",
+      "params": [
+        {
+          "name": "transactionId",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    }
+  ]
+}

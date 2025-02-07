@@ -167,7 +167,7 @@ async fn main() -> Result<()> {
                 if event
                     .data
                     .as_object()
-                    .and_then(|o| o.get("tx_id"))
+                    .and_then(|o| o.get("transactionId"))
                     .and_then(|id| id.as_str())
                     .is_none_or(|id| id != txid)
                 {

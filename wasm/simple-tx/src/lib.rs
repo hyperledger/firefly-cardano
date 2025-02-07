@@ -21,21 +21,23 @@ struct SendAdaRequest {
 
 #[derive(Serialize)]
 struct TxSubmittedEventData {
+    #[serde(rename = "transactionId")]
     pub tx_id: String,
 }
 impl EventData for TxSubmittedEventData {
     fn signature(&self) -> String {
-        "TransactionSubmitted(String)".into()        
+        "TransactionSubmitted(string)".into()        
     }
 }
 
 #[derive(Serialize)]
 struct TxFinalizedEventData {
+    #[serde(rename = "transactionId")]
     pub tx_id: String,
 }
 impl EventData for TxFinalizedEventData {
     fn signature(&self) -> String {
-        "TransactionFinalized(String)".into()
+        "TransactionFinalized(string)".into()
     }
 }
 

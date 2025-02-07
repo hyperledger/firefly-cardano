@@ -1148,6 +1148,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "firefly-cardano-deploy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "wat",
+ "wit-component 0.223.0",
+]
+
+[[package]]
 name = "firefly-cardano-deploy-contract"
 version = "0.1.0"
 dependencies = [
