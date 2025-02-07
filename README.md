@@ -24,7 +24,7 @@ Requires at least Docker Compose version 2.22.0, uses Compose Watch: <https://do
 The easier way to get started is to use Docker compose to build your entire cluster.
 
 ```
-# For solitary, run:
+# To compose a cluster
 BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX docker compose -f infra/docker-compose.yaml up --build -d
 
 # Watch the build
