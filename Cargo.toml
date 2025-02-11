@@ -6,6 +6,7 @@ members = [
     "firefly-cardanosigner",
     "firefly-server",
     "scripts/demo",
+    "scripts/deploy",
     "scripts/deploy-contract",
 ]
 

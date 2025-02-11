@@ -5,7 +5,10 @@ use firefly_server::apitypes::{ApiError, ApiResult};
 use tokio::sync::broadcast;
 use ulid::Ulid;
 
-use crate::{blockchain::BlockchainClient, operations::Operation, persistence::Persistence};
+use crate::{
+    blockchain::BlockchainClient, contracts::ContractManager, operations::Operation,
+    persistence::Persistence,
+};
 
 use super::{
     mux::{Multiplexer, StreamSubscription},
@@ -19,13 +22,14 @@ pub struct StreamManager {
 
 impl StreamManager {
     pub async fn new(
-        persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
+        contracts: Arc<ContractManager>,
+        persistence: Arc<dyn Persistence>,
         operation_sink: broadcast::Sender<Operation>,
     ) -> Result<Self> {
         Ok(Self {
             persistence: persistence.clone(),
-            mux: Multiplexer::new(persistence, blockchain, operation_sink).await?,
+            mux: Multiplexer::new(blockchain, contracts, persistence, operation_sink).await?,
         })
     }
 

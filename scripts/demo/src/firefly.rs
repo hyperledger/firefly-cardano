@@ -166,6 +166,7 @@ pub struct FireflyWebSocketEvent {
     pub signature: String,
     pub block_number: u64,
     pub transaction_hash: String,
+    pub data: Value,
 }
 
 #[derive(Serialize)]
@@ -246,4 +247,9 @@ pub enum ListenerType {
 #[serde(rename_all = "camelCase")]
 pub enum ListenerFilter {
     TransactionId(String),
+    #[serde(rename_all = "camelCase")]
+    Event {
+        contract: String,
+        event_path: String,
+    },
 }

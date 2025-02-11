@@ -43,6 +43,7 @@ impl OperationsManager {
             id,
             status: OperationStatus::Pending,
             tx_id: None,
+            contract_address: Some(name.to_string()),
         };
         self.update_operation(&op).await?;
         match self.contracts.deploy(name, contract).await {
@@ -71,6 +72,7 @@ impl OperationsManager {
             id,
             status: OperationStatus::Pending,
             tx_id: None,
+            contract_address: None,
         };
         self.update_operation(&op).await?;
         let result = self.contracts.invoke(contract, method, params).await;
@@ -83,7 +85,9 @@ impl OperationsManager {
             }
         };
         if let Some(tx) = value {
-            op.tx_id = Some(self.submit_transaction(from, tx).await?);
+            let tx_id = self.submit_transaction(from, tx).await?;
+            op.tx_id = Some(tx_id.clone());
+            self.contracts.handle_submit(contract, method, &tx_id).await;
         }
 
         op.status = OperationStatus::Succeeded;

@@ -49,6 +49,7 @@ async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result
             .iter()
             .map(|e| Event {
                 listener_id: Some(e.id.listener_id.clone().into()),
+                address: e.id.address.clone(),
                 signature: e.id.signature.clone(),
                 block_number: e.id.block_number,
                 block_hash: e.id.block_hash.clone(),
@@ -82,6 +83,9 @@ async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result
             }
             error!("client couldn't process batch: {}", err.message);
         }
+        IncomingMessage::ListenReplies => {
+            // do nothing, we already send replies whether they ask or not
+        }
         other => {
             bail!("unexpected response to batch! {:?}", other);
         }
@@ -101,6 +105,9 @@ async fn send_operation(socket: &mut WebSocket, op: Operation) -> Result<()> {
         },
         transaction_hash: op.tx_id.clone(),
         error_message: op.status.error_message().map(|m| m.to_string()),
+        contract_location: op
+            .contract_address
+            .map(|address| ContractLocation { address }),
     };
     let outgoing_json = serde_json::to_string(&operation)?;
     socket.send(Message::Text(outgoing_json.into())).await?;
@@ -131,9 +138,10 @@ struct ErrorMessage {
 }
 
 #[derive(Debug, Deserialize)]
-#[serde(tag = "type", rename_all = "camelCase")]
+#[serde(tag = "type", rename_all = "lowercase")]
 enum IncomingMessage {
     Listen(ListenMessage),
+    ListenReplies,
     Ack(AckMessage),
     Error(ErrorMessage),
 }
@@ -170,6 +178,7 @@ async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>>
 #[serde(rename_all = "camelCase")]
 struct Event {
     listener_id: Option<String>,
+    address: Option<String>,
     signature: String,
     block_hash: String,
     block_number: Option<u64>,
@@ -193,6 +202,7 @@ struct OutgoingOperation {
     headers: OperationHeaders,
     transaction_hash: Option<String>,
     error_message: Option<String>,
+    contract_location: Option<ContractLocation>,
 }
 
 #[derive(Debug, Serialize)]
@@ -201,6 +211,11 @@ struct OperationHeaders {
     request_id: String,
     #[serde(rename = "type")]
     type_: String,
+}
+
+#[derive(Debug, Serialize)]
+struct ContractLocation {
+    address: String,
 }
 
 pub async fn handle_socket_upgrade(

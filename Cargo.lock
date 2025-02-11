@@ -357,7 +357,7 @@ dependencies = [
 [[package]]
 name = "balius-macros"
 version = "0.1.0"
-source = "git+https://github.com/txpipe/balius.git?rev=cf2791d#cf2791d63658cd062384a11d2322480ba8f82039"
+source = "git+https://github.com/txpipe/balius.git?rev=dd56cd0#dd56cd03ee7912762e03d83dda33f8ae93f05033"
 dependencies = [
  "quote",
  "syn",
@@ -366,7 +366,7 @@ dependencies = [
 [[package]]
 name = "balius-runtime"
 version = "0.1.0"
-source = "git+https://github.com/txpipe/balius.git?rev=cf2791d#cf2791d63658cd062384a11d2322480ba8f82039"
+source = "git+https://github.com/txpipe/balius.git?rev=dd56cd0#dd56cd03ee7912762e03d83dda33f8ae93f05033"
 dependencies = [
  "async-trait",
  "flate2",
@@ -390,7 +390,7 @@ dependencies = [
 [[package]]
 name = "balius-sdk"
 version = "0.1.0"
-source = "git+https://github.com/txpipe/balius.git?rev=cf2791d#cf2791d63658cd062384a11d2322480ba8f82039"
+source = "git+https://github.com/txpipe/balius.git?rev=dd56cd0#dd56cd03ee7912762e03d83dda33f8ae93f05033"
 dependencies = [
  "balius-macros",
  "hex",
@@ -1127,6 +1127,9 @@ name = "firefly-balius"
 version = "0.1.0"
 dependencies = [
  "balius-sdk",
+ "hex",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1142,6 +1145,22 @@ dependencies = [
  "serde_json",
  "tokio",
  "uuid",
+]
+
+[[package]]
+name = "firefly-cardano-deploy"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "clap",
+ "hex",
+ "reqwest",
+ "serde",
+ "serde_json",
+ "tokio",
+ "uuid",
+ "wat",
+ "wit-component 0.223.0",
 ]
 
 [[package]]

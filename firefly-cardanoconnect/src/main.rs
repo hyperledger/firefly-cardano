@@ -80,7 +80,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
     let operation_sink = broadcast::Sender::new(1024);
     let operations = Arc::new(OperationsManager::new(
         blockchain.clone(),
-        contracts,
+        contracts.clone(),
         persistence.clone(),
         signer.clone(),
         operation_sink.clone(),
@@ -91,7 +91,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
         operations,
         signer,
         stream_manager: Arc::new(
-            StreamManager::new(persistence, blockchain, operation_sink).await?,
+            StreamManager::new(blockchain, contracts, persistence, operation_sink).await?,
         ),
     };
 
