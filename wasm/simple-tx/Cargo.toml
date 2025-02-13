@@ -2,7 +2,7 @@
 name = "simple-tx"
 version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
+repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
 balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "dd56cd0" }
