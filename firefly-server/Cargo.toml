@@ -2,7 +2,7 @@
 name = "firefly-server"
 version = "0.1.0"
 edition = "2021"
-repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
+repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
 aide = { version = "0.14", features = ["axum", "axum-json"] }
