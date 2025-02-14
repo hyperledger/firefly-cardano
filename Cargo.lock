@@ -1179,6 +1179,22 @@ dependencies = [
 ]
 
 [[package]]
+name = "firefly-cardano-generate-key"
+version = "0.1.0"
+dependencies = [
+ "anyhow",
+ "bech32 0.11.0",
+ "clap",
+ "hex",
+ "minicbor",
+ "pallas-crypto 0.32.0",
+ "pallas-primitives 0.32.0",
+ "rand",
+ "serde",
+ "serde_json",
+]
+
+[[package]]
 name = "firefly-cardanoconnect"
 version = "0.1.0"
 dependencies = [

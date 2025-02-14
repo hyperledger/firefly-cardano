@@ -41,12 +41,11 @@ docker compose watch
 
 - Create Cardano wallet and put the signing key in `infra/wallet/${address}.skey`
 
-  ```
-    cardano-cli address key-gen --verification-key-file firefly.vkey --signing-key-file firefly.skey
-    cardano-cli address build --payment-verification-key-file firefly.vkey --out-file firefly.addr
-    mkdir -p infra/wallet
-    cp firefly.skey infra/wallet/$(cat firefly.addr).skey
-    rm firefly.vkey firefly.skey firefly.addr
+  ```bash
+    cargo run --bin firefly-cardano-generate-key -- --wallet-dir infra/wallet --testnet
+
+    # or if you have installed just...
+    just generate-key
   ```
 
 - To start up the connector please execute:

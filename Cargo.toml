@@ -8,6 +8,7 @@ members = [
     "scripts/demo",
     "scripts/deploy",
     "scripts/deploy-contract",
+    "scripts/generate-key",
 ]
 
 exclude = ["wasm"]
