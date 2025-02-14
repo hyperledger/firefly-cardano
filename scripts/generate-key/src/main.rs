@@ -13,7 +13,7 @@ struct Args {
     #[arg(short, long, default_value = "infra/wallet")]
     wallet_dir: PathBuf,
     #[arg(short, long)]
-    testnet: bool
+    testnet: bool,
 }
 
 #[derive(Serialize)]
@@ -50,7 +50,7 @@ fn generate_signing_key(testnet: bool) -> Result<(String, SigningKeyContents)> {
         hex::encode(bytes)
     };
 
-    let contents =  SigningKeyContents {
+    let contents = SigningKeyContents {
         type_: "PaymentSigningKeyShelley_ed25519".into(),
         description: "Payment Signing Key".into(),
         cbor_hex,
