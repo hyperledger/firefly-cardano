@@ -20,7 +20,6 @@ use tokio::time;
 use tracing::warn;
 
 use crate::{
-    blockfrost::BlockfrostClient,
     streams::{BlockInfo, BlockReference},
     utils::LazyInit,
 };
@@ -30,27 +29,17 @@ use super::{ChainSyncClient, RequestNextResponse};
 pub struct NodeToClient {
     socket: PathBuf,
     magic: u64,
-    genesis_hash: String,
     genesis_values: GenesisValues,
-    blockfrost: Option<BlockfrostClient>,
     client: LazyInit<NodeClient>,
 }
 
 impl NodeToClient {
-    pub async fn new(
-        socket: &Path,
-        magic: u64,
-        genesis_hash: &str,
-        genesis_values: GenesisValues,
-        blockfrost: Option<BlockfrostClient>,
-    ) -> Self {
+    pub async fn new(socket: &Path, magic: u64, genesis_values: GenesisValues) -> Self {
         let client = Self::connect(socket, magic);
         let mut result = Self {
             socket: socket.to_path_buf(),
             magic,
-            genesis_hash: genesis_hash.to_string(),
             genesis_values,
-            blockfrost,
             client,
         };
         if let Err(error) = result.get_client().await {
@@ -93,16 +82,10 @@ impl NodeToClient {
     }
 
     pub fn open_chainsync(&self) -> Result<N2cChainSync> {
-        let Some(blockfrost) = self.blockfrost.clone() else {
-            bail!("Cannot use node-to-client without a blockfrost key")
-        };
         let client = Self::connect(&self.socket, self.magic);
-        let genesis_hash = self.genesis_hash.clone();
         let genesis_values = self.genesis_values.clone();
         Ok(N2cChainSync {
             client,
-            blockfrost,
-            genesis_hash,
             genesis_values,
         })
     }
@@ -137,8 +120,6 @@ impl NodeToClient {
 
 pub struct N2cChainSync {
     client: LazyInit<NodeClient>,
-    blockfrost: BlockfrostClient,
-    genesis_hash: String,
     genesis_values: GenesisValues,
 }
 
@@ -187,13 +168,6 @@ impl ChainSyncClient for N2cChainSync {
         let tip = point_to_block_ref(tip.0);
 
         Ok((intersect, tip))
-    }
-    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
-        let (requested_slot, requested_hash) = match block_ref {
-            BlockReference::Origin => (None, &self.genesis_hash),
-            BlockReference::Point(number, hash) => (*number, hash),
-        };
-        super::blockfrost::request_block(&self.blockfrost, requested_hash, requested_slot).await
     }
 }
 

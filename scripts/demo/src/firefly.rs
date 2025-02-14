@@ -200,8 +200,6 @@ struct OperationStatus {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tip {
-    #[allow(unused)]
-    pub block_height: u64,
     pub block_slot: u64,
     pub block_hash: String,
 }

@@ -88,15 +88,10 @@ impl BlockchainClient {
         let blockchain = &config.connector.blockchain;
 
         let client = match (&blockchain.socket, blockfrost) {
-            (Some(socket), blockfrost) => {
-                let client = NodeToClient::new(
-                    socket,
-                    blockchain.magic(),
-                    blockchain.genesis_hash(),
-                    blockchain.genesis_values(),
-                    blockfrost,
-                )
-                .await;
+            (Some(socket), _) => {
+                let client =
+                    NodeToClient::new(socket, blockchain.magic(), blockchain.genesis_values())
+                        .await;
                 ClientImpl::NodeToClient(RwLock::new(client))
             }
             (None, Some(blockfrost)) => {
@@ -169,7 +164,6 @@ pub trait ChainSyncClient {
         &mut self,
         points: &[BlockReference],
     ) -> Result<(Option<BlockReference>, BlockReference)>;
-    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>>;
 }
 
 pub struct ChainSyncClientWrapper {
@@ -186,9 +180,6 @@ impl ChainSyncClient for ChainSyncClientWrapper {
         points: &[BlockReference],
     ) -> Result<(Option<BlockReference>, BlockReference)> {
         self.inner.find_intersect(points).await
-    }
-    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
-        self.inner.request_block(block_ref).await
     }
 }
 

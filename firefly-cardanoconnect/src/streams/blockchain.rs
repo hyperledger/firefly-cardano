@@ -81,6 +81,7 @@ impl ChainListener {
 #[derive(Debug)]
 pub struct ChainListenerImpl {
     history: VecDeque<BlockInfo>,
+    start: BlockReference,
     rollbacks: HashMap<BlockReference, BlockInfo>,
     sync_event_source: mpsc::Receiver<ChainSyncEvent>,
     block_record_sink: mpsc::UnboundedSender<BlockRecord>,
@@ -103,7 +104,10 @@ impl ChainListenerImpl {
     }
 
     pub fn get_tip(&self) -> BlockReference {
-        self.history.back().unwrap().as_reference()
+        self.history
+            .back()
+            .map(|b| b.as_reference())
+            .unwrap_or(self.start.clone())
     }
 
     pub fn try_get_next_event(&mut self, block_ref: &BlockReference) -> Option<ListenerEvent> {
@@ -112,18 +116,16 @@ impl ChainListenerImpl {
             BlockReference::Point(slot, hash) => (*slot, hash.clone()),
         };
 
-        if let Some(slot) = prev_slot {
-            // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
-            if self
-                .history
+        // if we haven't seen enough blocks to be "sure" that this one is immutable, apply all pending updates synchronously
+        if prev_slot.is_none_or(|slot| {
+            self.history
                 .iter()
                 .rev()
                 .find_map(|b| b.block_slot)
-                .is_some_and(|tip| tip < slot + APPROXIMATELY_IMMUTABLE_LENGTH)
-            {
-                while let Ok(sync_event) = self.sync_event_source.try_recv() {
-                    self.handle_sync_event(sync_event);
-                }
+                .is_none_or(|tip| tip < slot + APPROXIMATELY_IMMUTABLE_LENGTH)
+        }) {
+            while let Ok(sync_event) = self.sync_event_source.try_recv() {
+                self.handle_sync_event(sync_event);
             }
         }
 
@@ -132,15 +134,10 @@ impl ChainListenerImpl {
             return Some(ListenerEvent::Rollback(rollback_to.clone()));
         }
 
-        for (index, block) in self.history.iter().enumerate().rev() {
-            if block.block_hash == prev_hash {
-                if let Some(next) = self.history.get(index + 1) {
-                    // we already have the block which comes after this!
-                    return Some(ListenerEvent::Process(next.clone()));
-                } else {
-                    // we don't have that block yet, so process events until we do
-                    break;
-                }
+        for block in self.history.iter().rev() {
+            // If this block's parent is the one we're starting from, this is the next block to process.
+            if block.parent_hash.as_ref().is_some_and(|h| *h == prev_hash) {
+                return Some(ListenerEvent::Process(block.clone()));
             }
             // If we can tell by the slots we've gone too far back, break early
             if block
@@ -222,23 +219,18 @@ impl ChainListenerImpl {
         let mut sync = chain.sync().await?;
         let points: Vec<_> = history.iter().rev().map(|b| b.as_reference()).collect();
         let (head_ref, _) = sync.find_intersect(&points).await?;
-        let Some(head_ref) = head_ref else {
+        let Some(BlockReference::Point(_, head_hash)) = head_ref else {
             // The chain didn't recognize any of the blocks we saved from this chain.
             // We have no way to recover.
             bail!("listener {id} is on a fork which no longer exists");
         };
-        let Some(head) = sync.request_block(&head_ref).await? else {
-            bail!("listener {id} is on a fork which no longer exists");
-        };
 
         let mut rollbacks = HashMap::new();
-        while history
-            .back()
-            .is_some_and(|i| i.block_hash != head.block_hash)
-        {
+        while history.back().is_some_and(|i| i.block_hash != head_hash) {
             let rolled_back = history.pop_back().unwrap();
             rollbacks.insert(rolled_back.as_reference(), rolled_back);
         }
+        let start = history.back().unwrap().as_reference();
 
         let (sync_event_sink, sync_event_source) = mpsc::channel(16);
         let (block_record_sink, block_record_source) = mpsc::unbounded_channel();
@@ -246,6 +238,7 @@ impl ChainListenerImpl {
         tokio::spawn(Self::persist_blocks(id, persistence, block_record_source));
         Ok(Self {
             history,
+            start,
             rollbacks,
             genesis_hash: chain.genesis_hash(),
             sync_event_source,
@@ -260,71 +253,30 @@ impl ChainListenerImpl {
         from: Option<BlockReference>,
     ) -> Result<Self> {
         let mut sync = chain.sync().await?;
-        let head_ref = match &from {
-            Some(block_ref) => {
-                // If the caller passed a block reference, they're starting from either the origin or a specific point
-                let (head, _) = sync.find_intersect(&[block_ref.clone()]).await?;
-                let Some(head) = head else {
-                    // Trying to init a fresh listener from a ref which does not exist
-                    bail!("could not start listening from {from:?}, as it does not exist on-chain");
-                };
-                head
-            }
-            None => {
-                // Otherwise, they just want to follow from the tip
-                let (_, tip) = sync.find_intersect(&[]).await?;
-                // Call find_intersect again so the chainsync protocol knows we're following from the tip
-                let (head, _) = sync.find_intersect(&[tip.clone()]).await?;
-                if !head.is_some_and(|h| h == tip) {
-                    bail!("could not start listening from latest: rollback occurred while we were connecting");
-                };
-                tip
-            }
-        };
-        let Some(head) = sync.request_block(&head_ref).await? else {
-            // Trying to init a fresh listener from a ref which does not exist
-            bail!("could not start listening from {from:?}, as it does not exist on-chain");
-        };
-
-        let mut prev_hash = head.parent_hash.clone();
-        let mut history = VecDeque::new();
-        history.push_back(head);
-
-        for _ in 0..APPROXIMATELY_IMMUTABLE_LENGTH {
-            let Some(prev) = prev_hash else {
-                break;
+        let start = if let Some(block_ref) = &from {
+            let (Some(head), _) = sync.find_intersect(&[block_ref.clone()]).await? else {
+                // Trying to init a fresh listener from a ref which does not exist
+                bail!("could not start listening from {from:?}, as it does not exist on-chain");
             };
-            let prev_ref = BlockReference::Point(None, prev);
-            let prev_block = match sync.request_block(&prev_ref).await {
-                Err(err) => {
-                    warn!("could not populate a history for this listener, it may not be able to recover from rollback: {}", err);
-                    break;
-                }
-                Ok(None) => {
-                    bail!("block {from:?} was rolled back before we could finish setting it up")
-                }
-                Ok(Some(prev_block)) => prev_block,
+            head
+        } else {
+            // Otherwise, they just want to follow from the tip
+            let (_, tip) = sync.find_intersect(&[]).await?;
+            // Call find_intersect again so the chainsync protocol knows we're following from the tip
+            let (head, _) = sync.find_intersect(&[tip.clone()]).await?;
+            if !head.is_some_and(|h| h == tip) {
+                bail!("could not start listening from latest: rollback occurred while we were connecting");
             };
-
-            prev_hash = prev_block.parent_hash.clone();
-            history.push_front(prev_block);
-        }
-
-        let records: Vec<_> = history
-            .iter()
-            .map(|block| BlockRecord {
-                block: block.clone(),
-                rolled_back: false,
-            })
-            .collect();
-        persistence.save_block_records(&id, records).await?;
+            tip
+        };
 
         let (sync_event_sink, sync_event_source) = mpsc::channel(16);
         let (block_record_sink, block_record_source) = mpsc::unbounded_channel();
         tokio::spawn(Self::stay_in_sync(sync, sync_event_sink));
         tokio::spawn(Self::persist_blocks(id, persistence, block_record_source));
         Ok(Self {
-            history,
+            history: VecDeque::new(),
+            start,
             rollbacks: HashMap::new(),
             genesis_hash: chain.genesis_hash(),
             sync_event_source,

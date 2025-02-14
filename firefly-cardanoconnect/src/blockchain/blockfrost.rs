@@ -105,14 +105,6 @@ impl ChainSyncClient for BlockfrostChainSync {
         };
         Ok((None, parse_reference(&self.tip)))
     }
-
-    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
-        let (requested_slot, requested_hash) = match block_ref {
-            BlockReference::Origin => (None, &self.genesis_hash),
-            BlockReference::Point(number, hash) => (*number, hash),
-        };
-        request_block(&self.client, requested_hash, requested_slot).await
-    }
 }
 
 impl BlockfrostChainSync {
@@ -235,22 +227,6 @@ impl Point {
     fn as_reference(&self) -> BlockReference {
         BlockReference::Point(self.slot, self.hash.clone())
     }
-}
-
-pub async fn request_block(
-    client: &BlockfrostClient,
-    hash: &str,
-    slot: Option<u64>,
-) -> Result<Option<BlockInfo>> {
-    let Some(block) = client.try_blocks_by_id(hash).await? else {
-        return Ok(None);
-    };
-
-    if slot.is_some_and(|s| block.slot.is_some_and(|b| b as u64 != s)) {
-        bail!("requested_block returned a block in the wrong slot");
-    }
-
-    Ok(Some(parse_block(client, block).await?))
 }
 
 fn parse_point(block: &BlockContent) -> Point {
