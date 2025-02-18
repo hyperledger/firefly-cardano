@@ -1,7 +1,9 @@
 use std::collections::{hash_map::Entry, HashMap};
 
+use anyhow::Result;
 use async_trait::async_trait;
-use balius_runtime::ledgers::{CustomLedger, LedgerError, TxoRef, Utxo, UtxoPage, UtxoPattern};
+use balius_runtime::ledgers::{LedgerError, TxoRef, Utxo, UtxoPage};
+use blockfrost::Pagination;
 use num_rational::Rational32;
 use num_traits::FromPrimitive as _;
 use pallas_traverse::MultiEraTx;
@@ -9,7 +11,9 @@ use utxorpc_spec::utxorpc::v1alpha::cardano::{
     CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion, RationalNumber,
 };
 
-use crate::blockfrost::{BlockfrostClient, Pagination};
+use crate::blockchain::BaliusLedger;
+
+use super::client::BlockfrostClient;
 
 pub struct BlockfrostLedger {
     client: BlockfrostClient,
@@ -22,31 +26,82 @@ impl BlockfrostLedger {
 }
 
 #[async_trait]
-impl CustomLedger for BlockfrostLedger {
-    async fn read_utxos(&mut self, refs: Vec<TxoRef>) -> Result<Vec<Utxo>, LedgerError> {
+impl BaliusLedger for BlockfrostLedger {
+    async fn get_utxos(&mut self, refs: &[TxoRef]) -> Result<Vec<Utxo>> {
         let mut txs = TxDict::new(&mut self.client);
         let mut result = vec![];
-        for ref_ in &refs {
+        for ref_ in refs {
             let tx_bytes = txs.get_bytes(hex::encode(&ref_.tx_hash)).await?;
             let tx = TxDict::decode_tx(tx_bytes)?;
-            let Some(txo) = tx.output_at(ref_.tx_index as usize) else {
-                return Err(LedgerError::NotFound(ref_.clone()));
-            };
-            result.push(Utxo {
-                ref_: ref_.clone(),
-                body: txo.encode(),
-            });
+            if let Some(txo) = tx.output_at(ref_.tx_index as usize) {
+                result.push(Utxo {
+                    ref_: ref_.clone(),
+                    body: txo.encode(),
+                });
+            }
         }
         Ok(result)
     }
 
-    async fn read_params(&mut self) -> Result<Vec<u8>, LedgerError> {
+    async fn get_utxos_by_address(
+        &mut self,
+        address: Vec<u8>,
+        start: Option<String>,
+        max: usize,
+    ) -> Result<UtxoPage> {
+        let address = pallas_addresses::Address::from_bytes(&address)
+            .and_then(|a| a.to_bech32())
+            .map_err(|err| LedgerError::Internal(err.to_string()))?;
+        let page = match start {
+            Some(s) => s
+                .parse::<usize>()
+                .map_err(|e| LedgerError::Internal(e.to_string()))?,
+            None => 1,
+        };
+
+        let pagination = Pagination::new(blockfrost::Order::Asc, page, max);
+        let query = self
+            .client
+            .addresses_utxos(&address, pagination)
+            .await
+            .map_err(|err| LedgerError::Upstream(err.to_string()))?;
+
+        let mut utxos = vec![];
+        let mut txs = TxDict::new(&mut self.client);
+        for utxo in query {
+            let raw_tx_hash =
+                hex::decode(&utxo.tx_hash).map_err(|e| LedgerError::Upstream(e.to_string()))?;
+            let ref_ = TxoRef {
+                tx_hash: raw_tx_hash,
+                tx_index: utxo.tx_index as u32,
+            };
+
+            let tx_bytes = txs.get_bytes(utxo.tx_hash.clone()).await?;
+            let tx = TxDict::decode_tx(tx_bytes)?;
+            if let Some(txo) = tx.output_at(utxo.tx_index as usize) {
+                utxos.push(Utxo {
+                    ref_,
+                    body: txo.encode(),
+                });
+            };
+        }
+
+        let next_token = if utxos.len() == max {
+            Some((page + 1).to_string())
+        } else {
+            None
+        };
+
+        Ok(UtxoPage { utxos, next_token })
+    }
+
+    async fn get_params(&mut self) -> Result<PParams> {
         let raw_params = self
             .client
             .epochs_latest_parameters()
             .await
             .map_err(|e| LedgerError::Upstream(e.to_string()))?;
-        let params = PParams {
+        Ok(PParams {
             coins_per_utxo_byte: raw_params
                 .coins_per_utxo_size
                 .map(|v| v.parse().unwrap())
@@ -105,70 +160,7 @@ impl CustomLedger for BlockfrostLedger {
                 raw_params.max_block_ex_steps,
                 raw_params.max_block_ex_mem,
             ),
-        };
-        Ok(serde_json::to_vec(&params).unwrap())
-    }
-
-    async fn search_utxos(
-        &mut self,
-        pattern: UtxoPattern,
-        start: Option<String>,
-        max_items: u32,
-    ) -> Result<UtxoPage, LedgerError> {
-        if pattern.asset.is_some() {
-            return Err(LedgerError::Internal(
-                "querying by asset is not implemented".into(),
-            ));
-        }
-        let Some(address) = pattern.address else {
-            return Err(LedgerError::Internal("address is required".into()));
-        };
-        let address = pallas_addresses::Address::from_bytes(&address.exact_address)
-            .and_then(|a| a.to_bech32())
-            .map_err(|err| LedgerError::Internal(err.to_string()))?;
-        let page = match start {
-            Some(s) => s
-                .parse::<usize>()
-                .map_err(|e| LedgerError::Internal(e.to_string()))?,
-            None => 1,
-        };
-
-        let pagination = Pagination::new(blockfrost::Order::Asc, page, max_items as usize);
-        let query = self
-            .client
-            .addresses_utxos(&address, pagination)
-            .await
-            .map_err(|err| LedgerError::Upstream(err.to_string()))?;
-
-        let mut utxos = vec![];
-        let mut txs = TxDict::new(&mut self.client);
-        for utxo in query {
-            let raw_tx_hash =
-                hex::decode(&utxo.tx_hash).map_err(|e| LedgerError::Upstream(e.to_string()))?;
-            let ref_ = TxoRef {
-                tx_hash: raw_tx_hash,
-                tx_index: utxo.tx_index as u32,
-            };
-
-            let tx_bytes = txs.get_bytes(utxo.tx_hash.clone()).await?;
-            let tx = TxDict::decode_tx(tx_bytes)?;
-            let Some(txo) = tx.output_at(utxo.tx_index as usize) else {
-                return Err(LedgerError::NotFound(ref_));
-            };
-
-            utxos.push(Utxo {
-                ref_,
-                body: txo.encode(),
-            });
-        }
-
-        let next_token = if utxos.len() == max_items as usize {
-            Some((page + 1).to_string())
-        } else {
-            None
-        };
-
-        Ok(UtxoPage { utxos, next_token })
+        })
     }
 }
 

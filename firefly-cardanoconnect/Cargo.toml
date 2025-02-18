@@ -16,12 +16,12 @@ clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 dashmap = "6"
 futures = "0.3"
-pallas-addresses = "0.32"
-pallas-codec = "0.32"
-pallas-crypto = "0.32"
-pallas-primitives = "0.32"
-pallas-network = "0.32"
-pallas-traverse = "0.32"
+pallas-addresses = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-codec = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-crypto = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-primitives = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-network = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-traverse = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.25"

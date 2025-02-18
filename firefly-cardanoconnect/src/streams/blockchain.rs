@@ -173,6 +173,7 @@ impl ChainListenerImpl {
                 self.history.push_back(block);
             }
             ChainSyncEvent::RollBackward(rollback_to) => {
+                let rolling_back_to_start = rollback_to == self.start;
                 let target_hash = match rollback_to {
                     BlockReference::Origin => self.genesis_hash.clone(),
                     BlockReference::Point(_, hash) => hash,
@@ -192,7 +193,7 @@ impl ChainListenerImpl {
                         .insert(rolled_back.as_reference(), rolled_back);
                 }
                 assert!(
-                    !self.history.is_empty(),
+                    !self.history.is_empty() || rolling_back_to_start,
                     "tried rolling back past recorded history"
                 );
             }

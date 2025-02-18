@@ -1,27 +1,24 @@
 use std::{
     collections::{hash_map, BTreeSet, HashMap},
     path::PathBuf,
-    sync::Arc,
 };
 
 use anyhow::{bail, Result};
 use balius_runtime::{ledgers::Ledger, Response};
 use dashmap::{DashMap, Entry};
-use ledger::BlockfrostLedger;
 pub use runtime::ContractEvent;
 use runtime::ContractRuntime;
 use serde::Deserialize;
 use serde_json::Value;
-use tokio::{fs, sync::Mutex};
+use tokio::fs;
 use tracing::{error, warn};
 
 use crate::{
-    blockfrost::BlockfrostClient,
+    blockchain::BlockchainClient,
     streams::{BlockInfo, BlockReference, Listener, ListenerFilter},
 };
 
 mod kv;
-mod ledger;
 mod runtime;
 mod u5c;
 
@@ -40,19 +37,12 @@ pub struct ContractManager {
 }
 
 impl ContractManager {
-    pub async fn new(
-        config: &ContractsConfig,
-        blockfrost: Option<BlockfrostClient>,
-    ) -> Result<Self> {
+    pub async fn new(config: &ContractsConfig, blockchain: &BlockchainClient) -> Result<Self> {
         fs::create_dir_all(&config.components_path).await?;
         fs::create_dir_all(&config.stores_path).await?;
-        let ledger = blockfrost.map(|client| {
-            let ledger = BlockfrostLedger::new(client);
-            Ledger::Custom(Arc::new(Mutex::new(ledger)))
-        });
         let manager = Self {
             config: Some(config.clone()),
-            ledger,
+            ledger: Some(blockchain.ledger().await),
             runtimes: DashMap::new(),
         };
 
