@@ -8,8 +8,8 @@ repository = "https://github.com/hyperledger/firefly-cardano"
 balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "dd56cd0" }
 firefly-balius = { path = "../../firefly-balius" }
 hex = "0.4"
-pallas-addresses = "0.32.0"
-pallas-traverse = "0.32.0"
+pallas-addresses = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-traverse = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
 serde = { version = "1", features = ["derive"] }
 
 [lib]

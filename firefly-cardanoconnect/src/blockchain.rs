@@ -1,19 +1,22 @@
-use std::path::PathBuf;
+use std::{path::PathBuf, sync::Arc};
 
 use crate::{
-    blockfrost::BlockfrostClient,
     config::{CardanoConnectConfig, Secret},
     streams::{BlockInfo, BlockReference},
 };
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use balius_runtime::ledgers::{
+    CustomLedger, Ledger, LedgerError, TxoRef, Utxo, UtxoPage, UtxoPattern,
+};
 use blockfrost::Blockfrost;
 use mocks::MockChain;
 use n2c::NodeToClient;
 use pallas_primitives::conway::Tx;
 use pallas_traverse::wellknown::GenesisValues;
 use serde::Deserialize;
-use tokio::sync::RwLock;
+use tokio::sync::{Mutex, RwLock};
+use utxorpc_spec::utxorpc::v1alpha::cardano::PParams;
 
 mod blockfrost;
 pub mod mocks;
@@ -81,26 +84,22 @@ pub struct BlockchainClient {
 }
 
 impl BlockchainClient {
-    pub async fn new(
-        config: &CardanoConnectConfig,
-        blockfrost: Option<BlockfrostClient>,
-    ) -> Result<Self> {
+    pub async fn new(config: &CardanoConnectConfig) -> Result<Self> {
         let blockchain = &config.connector.blockchain;
 
-        let client = match (&blockchain.socket, blockfrost) {
-            (Some(socket), blockfrost) => {
+        let client = match (&blockchain.socket, &blockchain.blockfrost_key) {
+            (Some(socket), _) => {
                 let client = NodeToClient::new(
                     socket,
                     blockchain.magic(),
-                    blockchain.genesis_hash(),
+                    blockchain.era,
                     blockchain.genesis_values(),
-                    blockfrost,
                 )
                 .await;
                 ClientImpl::NodeToClient(RwLock::new(client))
             }
-            (None, Some(blockfrost)) => {
-                let client = Blockfrost::new(blockfrost, blockchain.genesis_hash());
+            (None, Some(blockfrost_key)) => {
+                let client = Blockfrost::new(&blockfrost_key.0, blockchain.genesis_hash());
                 ClientImpl::Blockfrost(client)
             }
             (None, None) => bail!("Missing blockchain configuration"),
@@ -160,6 +159,21 @@ impl BlockchainClient {
         };
         Ok(ChainSyncClientWrapper { inner })
     }
+
+    pub async fn ledger(&self) -> Ledger {
+        match &self.client {
+            ClientImpl::Blockfrost(bf) => {
+                let ledger = bf.ledger();
+                Ledger::Custom(Arc::new(Mutex::new(LedgerWrapper { ledger })))
+            }
+            ClientImpl::Mock(_) => Ledger::Mock(balius_runtime::ledgers::mock::Ledger),
+            ClientImpl::NodeToClient(n2c) => {
+                let client = n2c.read().await;
+                let ledger = client.ledger();
+                Ledger::Custom(Arc::new(Mutex::new(LedgerWrapper { ledger })))
+            }
+        }
+    }
 }
 
 #[async_trait]
@@ -169,7 +183,6 @@ pub trait ChainSyncClient {
         &mut self,
         points: &[BlockReference],
     ) -> Result<(Option<BlockReference>, BlockReference)>;
-    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>>;
 }
 
 pub struct ChainSyncClientWrapper {
@@ -187,12 +200,77 @@ impl ChainSyncClient for ChainSyncClientWrapper {
     ) -> Result<(Option<BlockReference>, BlockReference)> {
         self.inner.find_intersect(points).await
     }
-    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
-        self.inner.request_block(block_ref).await
-    }
 }
 
 pub enum RequestNextResponse {
     RollForward(BlockInfo, #[expect(dead_code)] BlockReference),
     RollBackward(BlockReference, #[expect(dead_code)] BlockReference),
+}
+
+#[async_trait]
+trait BaliusLedger {
+    async fn get_utxos(&mut self, refs: &[TxoRef]) -> Result<Vec<Utxo>>;
+    async fn get_utxos_by_address(
+        &mut self,
+        address: Vec<u8>,
+        start: Option<String>,
+        max: usize,
+    ) -> Result<UtxoPage>;
+    async fn get_params(&mut self) -> Result<PParams>;
+}
+
+struct LedgerWrapper<T: BaliusLedger> {
+    ledger: T,
+}
+
+#[async_trait]
+impl<T: BaliusLedger + Send> CustomLedger for LedgerWrapper<T> {
+    async fn read_utxos(&mut self, mut refs: Vec<TxoRef>) -> Result<Vec<Utxo>, LedgerError> {
+        refs.sort_by(|l, r| l.tx_hash.cmp(&r.tx_hash).then(l.tx_index.cmp(&r.tx_index)));
+
+        let txos = self
+            .ledger
+            .get_utxos(&refs)
+            .await
+            .map_err(|e| LedgerError::Upstream(e.to_string()))?;
+        for (requested, found) in refs.iter().zip(txos.iter()) {
+            if found.ref_.tx_hash != requested.tx_hash || found.ref_.tx_index != requested.tx_index
+            {
+                return Err(LedgerError::NotFound(requested.clone()));
+            }
+        }
+        if refs.len() > txos.len() {
+            return Err(LedgerError::NotFound(refs.get(txos.len()).unwrap().clone()));
+        }
+        Ok(txos)
+    }
+
+    async fn read_params(&mut self) -> Result<Vec<u8>, LedgerError> {
+        let pparams = self
+            .ledger
+            .get_params()
+            .await
+            .map_err(|e| LedgerError::Upstream(e.to_string()))?;
+        serde_json::to_vec(&pparams).map_err(|e| LedgerError::Internal(e.to_string()))
+    }
+
+    async fn search_utxos(
+        &mut self,
+        pattern: UtxoPattern,
+        start: Option<String>,
+        max_items: u32,
+    ) -> Result<UtxoPage, LedgerError> {
+        if pattern.asset.is_some() {
+            return Err(LedgerError::Internal(
+                "querying by asset is not implemented".into(),
+            ));
+        }
+        let Some(address) = pattern.address else {
+            return Err(LedgerError::Internal("address is required".into()));
+        };
+        self.ledger
+            .get_utxos_by_address(address.exact_address, start, max_items as usize)
+            .await
+            .map_err(|e| LedgerError::Internal(e.to_string()))
+    }
 }
