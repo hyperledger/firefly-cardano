@@ -14,7 +14,7 @@ use pallas_network::{
 };
 use pallas_primitives::{alonzo, conway, Bytes, NonEmptyKeyValuePairs, PositiveCoin};
 use utxorpc_spec::utxorpc::v1alpha::cardano::{
-    CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion,
+    CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion, VotingThresholds,
 };
 
 use crate::{blockchain::BaliusLedger, utils::LazyInit};
@@ -198,6 +198,54 @@ impl BaliusLedger for NodeToClientLedger {
                     steps: ex.steps,
                     memory: ex.mem as u64,
                 });
+            }
+            if let Some(c) = param.min_fee_ref_script_cost_per_byte {
+                result.min_fee_script_ref_cost_per_byte = Some(map_rational(c));
+            }
+            if let Some(t) = param.pool_voting_thresholds {
+                result.pool_voting_thresholds = Some(VotingThresholds {
+                    thresholds: vec![
+                        map_rational(t.motion_no_confidence),
+                        map_rational(t.committee_normal),
+                        map_rational(t.committee_no_confidence),
+                        map_rational(t.hard_fork_initiation),
+                        map_rational(t.pp_security_group),
+                    ],
+                });
+            }
+            if let Some(t) = param.drep_voting_thresholds {
+                result.drep_voting_thresholds = Some(VotingThresholds {
+                    thresholds: vec![
+                        map_rational(t.motion_no_confidence),
+                        map_rational(t.committee_normal),
+                        map_rational(t.committee_no_confidence),
+                        map_rational(t.update_to_constitution),
+                        map_rational(t.hard_fork_initiation),
+                        map_rational(t.pp_network_group),
+                        map_rational(t.pp_economic_group),
+                        map_rational(t.pp_technical_group),
+                        map_rational(t.pp_gov_group),
+                        map_rational(t.treasury_withdrawal),
+                    ],
+                });
+            }
+            if let Some(s) = param.committee_min_size {
+                result.min_committee_size = s as u32;
+            }
+            if let Some(l) = param.committee_max_term_length {
+                result.committee_term_limit = l;
+            }
+            if let Some(g) = param.gov_action_lifetime {
+                result.governance_action_validity_period = g;
+            }
+            if let Some(g) = param.gov_action_deposit {
+                result.governance_action_deposit = g.into();
+            }
+            if let Some(d) = param.drep_deposit {
+                result.drep_deposit = d.into();
+            }
+            if let Some(d) = param.drep_activity {
+                result.drep_inactivity_period = d;
             }
         }
         Ok(result)

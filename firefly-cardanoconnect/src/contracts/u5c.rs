@@ -91,8 +91,8 @@ fn convert_native_script(script: conway::NativeScript) -> cardano::NativeScript 
                 scripts: scripts.into_iter().map(convert_native_script).collect(),
             })
         }
-        conway::NativeScript::InvalidBefore(_) => todo!(),
-        conway::NativeScript::InvalidHereafter(_) => todo!(),
+        conway::NativeScript::InvalidBefore(t) => InnerNativeScript::InvalidBefore(t),
+        conway::NativeScript::InvalidHereafter(t) => InnerNativeScript::InvalidHereafter(t),
     };
     cardano::NativeScript {
         native_script: Some(inner),

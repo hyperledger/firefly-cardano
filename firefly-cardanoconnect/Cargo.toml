@@ -9,22 +9,22 @@ aide = { version = "0.14", features = ["axum", "axum-json", "axum-query"] }
 anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["macros", "ws"] }
-balius-runtime = { git = "https://github.com/txpipe/balius.git", rev = "dd56cd0" }
+balius-runtime = { git = "https://github.com/txpipe/balius.git", rev = "2a66c8c" }
 blockfrost = { git = "https://github.com/SupernaviX/blockfrost-rust.git", rev = "cfa7a5e", default-features = false, features = ["rustls-tls"] }
 blockfrost-openapi = "0.1.69"
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 dashmap = "6"
 futures = "0.3"
-pallas-addresses = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-codec = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-crypto = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-primitives = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-network = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-traverse = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-addresses = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-codec = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-crypto = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-primitives = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-network = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-traverse = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
-minicbor = "0.25"
+minicbor = "0.26"
 num-rational = "0.4"
 num-traits = "0.2"
 rand = "0.8"
@@ -39,4 +39,4 @@ tokio = { version = "1", features = ["full"] }
 tokio-rusqlite = { version = "0.5" }
 tracing = "0.1"
 ulid = "1"
-utxorpc-spec = "0.12"
+utxorpc-spec = "0.15"
