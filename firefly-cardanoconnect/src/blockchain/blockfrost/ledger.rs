@@ -1,4 +1,7 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{hash_map::Entry, HashMap},
+    str::FromStr,
+};
 
 use anyhow::Result;
 use async_trait::async_trait;
@@ -9,6 +12,7 @@ use num_traits::FromPrimitive as _;
 use pallas_traverse::MultiEraTx;
 use utxorpc_spec::utxorpc::v1alpha::cardano::{
     CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion, RationalNumber,
+    VotingThresholds,
 };
 
 use crate::blockchain::BaliusLedger;
@@ -102,10 +106,7 @@ impl BaliusLedger for BlockfrostLedger {
             .await
             .map_err(|e| LedgerError::Upstream(e.to_string()))?;
         Ok(PParams {
-            coins_per_utxo_byte: raw_params
-                .coins_per_utxo_size
-                .map(|v| v.parse().unwrap())
-                .unwrap_or_default(),
+            coins_per_utxo_byte: string_to_num(raw_params.coins_per_utxo_size),
             max_tx_size: raw_params.max_tx_size as u64,
             min_fee_coefficient: raw_params.min_fee_a as u64,
             min_fee_constant: raw_params.min_fee_b as u64,
@@ -123,10 +124,7 @@ impl BaliusLedger for BlockfrostLedger {
                 major: raw_params.protocol_major_ver as u32,
                 minor: raw_params.protocol_minor_ver as u32,
             }),
-            max_value_size: raw_params
-                .max_val_size
-                .map(|v| v.parse().unwrap())
-                .unwrap_or_default(),
+            max_value_size: string_to_num(raw_params.max_val_size),
             collateral_percentage: raw_params
                 .collateral_percent
                 .map(|v| v as u64)
@@ -160,6 +158,34 @@ impl BaliusLedger for BlockfrostLedger {
                 raw_params.max_block_ex_steps,
                 raw_params.max_block_ex_mem,
             ),
+            min_fee_script_ref_cost_per_byte: raw_params
+                .min_fee_ref_script_cost_per_byte
+                .map(f64_to_rational),
+            pool_voting_thresholds: voting_thresholds([
+                raw_params.pvt_motion_no_confidence,
+                raw_params.pvt_committee_normal,
+                raw_params.pvt_committee_no_confidence,
+                raw_params.pvt_hard_fork_initiation,
+                raw_params.pvt_p_p_security_group,
+            ]),
+            drep_voting_thresholds: voting_thresholds([
+                raw_params.dvt_motion_no_confidence,
+                raw_params.dvt_committee_normal,
+                raw_params.dvt_committee_no_confidence,
+                raw_params.dvt_update_to_constitution,
+                raw_params.dvt_hard_fork_initiation,
+                raw_params.dvt_p_p_network_group,
+                raw_params.dvt_p_p_economic_group,
+                raw_params.dvt_p_p_technical_group,
+                raw_params.dvt_p_p_gov_group,
+                raw_params.dvt_treasury_withdrawal,
+            ]),
+            min_committee_size: string_to_num(raw_params.committee_min_size),
+            committee_term_limit: string_to_num(raw_params.committee_max_term_length),
+            governance_action_validity_period: string_to_num(raw_params.gov_action_lifetime),
+            governance_action_deposit: string_to_num(raw_params.gov_action_deposit),
+            drep_deposit: string_to_num(raw_params.drep_deposit),
+            drep_inactivity_period: string_to_num(raw_params.drep_activity),
         })
     }
 }
@@ -198,6 +224,10 @@ impl<'a> TxDict<'a> {
     }
 }
 
+fn string_to_num<T: FromStr + Default>(string: Option<String>) -> T {
+    string.and_then(|v| v.parse().ok()).unwrap_or_default()
+}
+
 fn f64_to_rational(value: f64) -> RationalNumber {
     let ratio = Rational32::from_f64(value).unwrap();
     RationalNumber {
@@ -210,5 +240,16 @@ fn ex_units(step: Option<String>, mem: Option<String>) -> Option<ExUnits> {
     Some(ExUnits {
         steps: step?.parse().ok()?,
         memory: mem?.parse().ok()?,
+    })
+}
+
+fn voting_thresholds(
+    thresholds: impl IntoIterator<Item = Option<f64>>,
+) -> Option<VotingThresholds> {
+    Some(VotingThresholds {
+        thresholds: thresholds
+            .into_iter()
+            .map(|t| t.map(f64_to_rational))
+            .collect::<Option<Vec<_>>>()?,
     })
 }

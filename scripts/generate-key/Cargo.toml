@@ -8,9 +8,9 @@ anyhow = "1"
 bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 hex = "0.4"
-minicbor = "0.25"
-pallas-crypto = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-primitives = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+minicbor = "0.26"
+pallas-crypto = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
+pallas-primitives = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

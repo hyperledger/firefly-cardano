@@ -12,11 +12,11 @@ bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
-minicbor = "0.25"
-pallas-addresses = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-crypto = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-primitives = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-wallet = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+minicbor = "0.26"
+pallas-addresses = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
+pallas-crypto = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
+pallas-primitives = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
+pallas-wallet = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
 rand = "0.8"
 schemars = "0.8"
 serde = "1"

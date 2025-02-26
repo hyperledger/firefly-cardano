@@ -5,11 +5,11 @@ edition = "2021"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
-balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "dd56cd0" }
+balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "2a66c8c" }
 firefly-balius = { path = "../../firefly-balius" }
 hex = "0.4"
-pallas-addresses = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
-pallas-traverse = { git = "https://github.com/SupernaviX/pallas.git", rev = "2e9b8b0" }
+pallas-addresses = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
+pallas-traverse = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b0" }
 serde = { version = "1", features = ["derive"] }
 
 [lib]
