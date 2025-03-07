@@ -1332,7 +1332,6 @@ checksum = "0fda2ff0d084019ba4d7c6f371c95d8fd75ce3524c3cb8fb653a3023f6323e64"
 name = "simple-tx"
 version = "0.1.0"
 dependencies = [
- "balius-sdk",
  "firefly-balius",
  "hex",
  "pallas-addresses 0.32.0 (git+https://github.com/txpipe/pallas.git?rev=2ddb5b066bbde9d2ed55014b286f47ad370b828e)",

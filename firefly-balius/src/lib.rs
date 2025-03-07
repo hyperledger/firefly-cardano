@@ -1,5 +1,6 @@
 use std::{collections::HashMap, marker::PhantomData};
 
+pub use balius_sdk;
 use balius_sdk::{
     txbuilder::{primitives::TransactionInput, BuildContext, BuildError, InputExpr, UtxoSource},
     wit, Ack, Params, Utxo, Worker, WorkerResult,
