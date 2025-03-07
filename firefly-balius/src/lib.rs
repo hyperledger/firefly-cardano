@@ -100,6 +100,8 @@ pub trait WorkerExt {
     where
         C: TryFrom<wit::Config, Error = balius_sdk::Error> + Send + Sync + 'static,
         F: Fn(C, SubmittedTx) -> WorkerResult<Ack> + Send + Sync + 'static;
+
+    fn with_new_txo_handler(self, handler: impl Handler) -> Self;
 }
 
 impl WorkerExt for Worker {
@@ -109,6 +111,16 @@ impl WorkerExt for Worker {
         F: Fn(C, SubmittedTx) -> WorkerResult<Ack> + Send + Sync + 'static,
     {
         self.with_request_handler("__tx_submitted", SubmittedTxHandler::from(func))
+    }
+
+    fn with_new_txo_handler(self, handler: impl Handler) -> Self {
+        self.with_utxo_handler(
+            wit::balius::app::driver::UtxoPattern {
+                address: None,
+                token: None,
+            },
+            handler,
+        )
     }
 }
 

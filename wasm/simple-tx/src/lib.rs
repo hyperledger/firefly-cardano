@@ -149,11 +149,5 @@ fn main() -> Worker {
         .with_request_handler("send_ada", FnHandler::from(send_ada))
         .with_request_handler("current_state", FnHandler::from(query_current_state))
         .with_tx_submitted_handler(handle_submit)
-        .with_utxo_handler(
-            balius_sdk::wit::balius::app::driver::UtxoPattern {
-                address: None,
-                token: None,
-            },
-            FnHandler::from(handle_utxo),
-        )
+        .with_new_txo_handler(FnHandler::from(handle_utxo))
 }
