@@ -24,8 +24,11 @@ Requires at least Docker Compose version 2.22.0, uses Compose Watch: <https://do
 The easier way to get started is to use Docker compose to build your entire cluster.
 
 ```
-# To compose a cluster
+# To compose a cluster using Blockfrost as a backing store
 BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX docker compose -f infra/docker-compose.yaml up --build -d
+
+# To create a cluster with a local cardano node (takes longer to spin up)
+docker compose -f infra/docker-compose.node.yaml up --build -d
 
 # Watch the build
 docker compose watch

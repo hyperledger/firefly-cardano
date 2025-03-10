@@ -1,6 +1,8 @@
+include:
+  - docker-compose.common.yaml
 services:
   init-node:
-    image: ghcr.io/input-output-hk/mithril-client:2450.0-c6c7eba
+    image: ghcr.io/input-output-hk/mithril-client:2506.0-2627f17
     entrypoint: /app/bin/entrypoint.sh
     user: "${UID}:${GID}"
     environment:
@@ -25,6 +27,26 @@ services:
     depends_on:
       init-node:
         condition: service_completed_successfully
+
+  firefly-cardanoconnect:
+    image: ghcr.io/hyperledger/firefly-cardanoconnect:main
+    build:
+      context: ..
+      target: firefly-cardanoconnect
+    develop:
+      watch:
+      - action: rebuild
+        path: ../firefly-cardanoconnect
+    command: ./firefly-cardanoconnect --config-file ./config.yaml
+    environment:
+      - FIREFLY_CONNECTOR_BLOCKCHAIN_SOCKET=/ipc/node.socket
+    ports:
+      - 5018:5018
+    volumes:
+      - connect-contracts:/contracts
+      - connect-db:/db
+      - ./connect.yaml:/app/config.yaml
+      - ./ipc:/ipc
 
 volumes:
   node-db:
