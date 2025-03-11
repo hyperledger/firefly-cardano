@@ -47,6 +47,11 @@ services:
       - connect-db:/db
       - ./connect.yaml:/app/config.yaml
       - ./ipc:/ipc
+    depends_on:
+      cardano-node:
+        condition: service_healthy
 
 volumes:
+  connect-contracts:
+  connect-db:
   node-db:
