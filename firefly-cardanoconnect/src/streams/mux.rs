@@ -1,12 +1,6 @@
-use std::{
-    cmp::Ordering,
-    collections::BTreeMap,
-    sync::Arc,
-    time::{Duration, SystemTime},
-};
+use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
 
 use anyhow::{bail, Context, Result};
-use chrono::{DateTime, Utc};
 use dashmap::{DashMap, Entry};
 use firefly_server::apitypes::ToAnyhow;
 use futures::{stream::FuturesUnordered, StreamExt};
@@ -20,7 +14,7 @@ use tracing::warn;
 use crate::{
     blockchain::BlockchainClient,
     contracts::{ContractListener, ContractManager},
-    operations::Operation,
+    operations::{Operation, OperationUpdateId},
     persistence::Persistence,
 };
 
@@ -35,7 +29,7 @@ use super::{
 pub struct Multiplexer {
     dispatchers: Arc<DashMap<StreamId, StreamDispatcher>>,
     stream_ids_by_topic: Arc<DashMap<String, StreamId>>,
-    operation_update_sink: watch::Sender<DateTime<Utc>>,
+    operation_update_sink: watch::Sender<Option<OperationUpdateId>>,
     contracts: Arc<ContractManager>,
     persistence: Arc<dyn Persistence>,
     data_source: Arc<DataSource>,
@@ -46,7 +40,7 @@ impl Multiplexer {
         blockchain: Arc<BlockchainClient>,
         contracts: Arc<ContractManager>,
         persistence: Arc<dyn Persistence>,
-        operation_update_sink: watch::Sender<DateTime<Utc>>,
+        operation_update_sink: watch::Sender<Option<OperationUpdateId>>,
     ) -> Result<Self> {
         let data_source = Arc::new(DataSource::new(blockchain, persistence.clone()));
 
@@ -160,7 +154,7 @@ impl StreamDispatcher {
         contracts: Arc<ContractManager>,
         persistence: Arc<dyn Persistence>,
         data_source: Arc<DataSource>,
-        operation_update_source: watch::Receiver<DateTime<Utc>>,
+        operation_update_source: watch::Receiver<Option<OperationUpdateId>>,
     ) -> Result<Self> {
         let (state_change_sink, state_change_source) = mpsc::channel(16);
 
@@ -169,10 +163,9 @@ impl StreamDispatcher {
             .await
             .to_anyhow()?;
         let checkpoint = persistence.read_checkpoint(&stream.id).await.to_anyhow()?;
-        let last_operation_at = checkpoint
+        let last_operation_id = checkpoint
             .as_ref()
-            .and_then(|c| c.last_operation_at)
-            .unwrap_or(SystemTime::now().into());
+            .and_then(|c| c.last_operation_id.clone());
         let old_hwms = checkpoint.map(|cp| cp.listeners).unwrap_or_default();
 
         let stream = stream.clone();
@@ -205,7 +198,7 @@ impl StreamDispatcher {
                 batch_timeout: stream.batch_timeout,
                 batch_number: 1,
                 listeners,
-                last_operation_at,
+                last_operation_id,
                 hwms,
                 persistence,
             };
@@ -276,7 +269,7 @@ struct StreamDispatcherWorker {
     batch_timeout: Duration,
     batch_number: u64,
     listeners: BTreeMap<ListenerId, ListenerState>,
-    last_operation_at: DateTime<Utc>,
+    last_operation_id: Option<OperationUpdateId>,
     hwms: BTreeMap<ListenerId, EventReference>,
     persistence: Arc<dyn Persistence>,
 }
@@ -285,11 +278,11 @@ impl StreamDispatcherWorker {
     async fn run(
         mut self,
         mut state_change_source: mpsc::Receiver<StreamDispatcherStateChange>,
-        mut operation_update_source: watch::Receiver<DateTime<Utc>>,
+        mut operation_update_source: watch::Receiver<Option<OperationUpdateId>>,
     ) {
         let mut batch_sink = None;
         loop {
-            let (batch, ack_rx, last_op_at, hwms) = select! {
+            let (batch, ack_rx, last_op_id, hwms) = select! {
                 batch = self.build_batch(&mut operation_update_source), if batch_sink.is_some() && !self.listeners.is_empty() => batch,
                 Some(change) = state_change_source.recv() => {
                     match change {
@@ -326,12 +319,12 @@ impl StreamDispatcherWorker {
             }
             match ack_rx.await {
                 Ok(()) => {
-                    self.last_operation_at = last_op_at;
+                    self.last_operation_id = last_op_id;
                     self.hwms = hwms;
                     self.persistence
                         .write_checkpoint(&StreamCheckpoint {
                             stream_id: self.stream_id.clone(),
-                            last_operation_at: Some(self.last_operation_at),
+                            last_operation_id: self.last_operation_id.clone(),
                             listeners: self.hwms.clone(),
                         })
                         .await
@@ -347,14 +340,14 @@ impl StreamDispatcherWorker {
 
     async fn build_batch(
         &mut self,
-        operation_update_source: &mut watch::Receiver<DateTime<Utc>>,
+        operation_update_source: &mut watch::Receiver<Option<OperationUpdateId>>,
     ) -> (
         Batch,
         oneshot::Receiver<()>,
-        DateTime<Utc>,
+        Option<OperationUpdateId>,
         BTreeMap<ListenerId, EventReference>,
     ) {
-        let mut last_op_at = self.last_operation_at;
+        let mut last_op_id = self.last_operation_id.clone();
         let mut hwms = self.hwms.clone();
 
         loop {
@@ -364,7 +357,7 @@ impl StreamDispatcherWorker {
             let mut events = vec![];
             select! {
                 () = &mut batch_timeout_at => {}
-                () = self.collect_events(&mut last_op_at, &mut hwms, &mut events, operation_update_source) => {}
+                () = self.collect_events(&mut last_op_id, &mut hwms, &mut events, operation_update_source) => {}
             }
 
             if events.is_empty() {
@@ -377,25 +370,25 @@ impl StreamDispatcherWorker {
                 events,
                 ack_tx,
             };
-            return (batch, ack_rx, last_op_at, hwms);
+            return (batch, ack_rx, last_op_id, hwms);
         }
     }
 
     async fn collect_events(
         &mut self,
-        last_op_at: &mut DateTime<Utc>,
+        last_op: &mut Option<OperationUpdateId>,
         hwms: &mut BTreeMap<ListenerId, EventReference>,
         events: &mut Vec<BatchEvent>,
-        operation_update_source: &mut watch::Receiver<DateTime<Utc>>,
+        operation_update_source: &mut watch::Receiver<Option<OperationUpdateId>>,
     ) {
-        if *operation_update_source.borrow() > *last_op_at {
-            self.collect_operation_events(last_op_at, events).await;
+        if *operation_update_source.borrow() > *last_op {
+            self.collect_operation_events(last_op, events).await;
         }
         while events.len() < self.batch_size {
             select! {
                 _ = self.collect_contract_events(hwms, events) => {}
                 Ok(()) = operation_update_source.changed() => {
-                    self.collect_operation_events(last_op_at, events).await;
+                    self.collect_operation_events(last_op, events).await;
                 }
             }
         }
@@ -403,18 +396,19 @@ impl StreamDispatcherWorker {
 
     async fn collect_operation_events(
         &self,
-        last_op_at: &mut DateTime<Utc>,
+        last_op: &mut Option<OperationUpdateId>,
         events: &mut Vec<BatchEvent>,
     ) {
-        let Ok(ops) = self.persistence.operations_since(*last_op_at).await else {
+        let Ok(updates) = self
+            .persistence
+            .list_operation_updates(last_op.as_ref(), self.batch_size - events.len())
+            .await
+        else {
             return;
         };
-        if ops.is_empty() {
-            *last_op_at = SystemTime::now().into();
-        }
-        for (timestamp, op) in ops {
-            events.push(BatchEvent::Receipt(op));
-            *last_op_at = timestamp;
+        for update in updates {
+            events.push(BatchEvent::Receipt(update.operation));
+            last_op.replace(update.update_id);
             if events.len() >= self.batch_size {
                 break;
             }

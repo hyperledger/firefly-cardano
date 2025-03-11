@@ -34,3 +34,11 @@ impl OperationStatus {
         }
     }
 }
+
+strong_id!(OperationUpdateId, String);
+
+#[derive(Debug, Clone)]
+pub struct OperationUpdate {
+    pub update_id: OperationUpdateId,
+    pub operation: Operation,
+}

@@ -1,7 +1,6 @@
-use std::{sync::Arc, time::SystemTime};
+use std::sync::Arc;
 
 use anyhow::Context;
-use chrono::{DateTime, Utc};
 use firefly_server::apitypes::{ApiError, ApiResult};
 use pallas_primitives::conway::Tx;
 use serde_json::Value;
@@ -12,14 +11,14 @@ use crate::{
     signer::CardanoSigner,
 };
 
-use super::{Operation, OperationId, OperationStatus};
+use super::{Operation, OperationId, OperationStatus, OperationUpdateId};
 
 pub struct OperationsManager {
     blockchain: Arc<BlockchainClient>,
     contracts: Arc<ContractManager>,
     persistence: Arc<dyn Persistence>,
     signer: Arc<CardanoSigner>,
-    operation_update_sink: watch::Sender<DateTime<Utc>>,
+    operation_update_sink: watch::Sender<Option<OperationUpdateId>>,
 }
 
 impl OperationsManager {
@@ -28,7 +27,7 @@ impl OperationsManager {
         contracts: Arc<ContractManager>,
         persistence: Arc<dyn Persistence>,
         signer: Arc<CardanoSigner>,
-        operation_update_sink: watch::Sender<DateTime<Utc>>,
+        operation_update_sink: watch::Sender<Option<OperationUpdateId>>,
     ) -> Self {
         Self {
             blockchain,
@@ -106,9 +105,8 @@ impl OperationsManager {
 
     async fn update_operation(&self, op: &Operation) -> ApiResult<()> {
         // Notify consumers about this status update.
-        let now = SystemTime::now();
-        self.persistence.write_operation(op).await?;
-        self.operation_update_sink.send_replace(now.into());
+        let update_id = self.persistence.write_operation(op).await?;
+        self.operation_update_sink.send_replace(Some(update_id));
         Ok(())
     }
 

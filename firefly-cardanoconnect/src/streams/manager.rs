@@ -1,12 +1,14 @@
 use std::{sync::Arc, time::Duration};
 
 use anyhow::Result;
-use chrono::{DateTime, Utc};
 use firefly_server::apitypes::{ApiError, ApiResult};
 use tokio::sync::watch;
 use ulid::Ulid;
 
-use crate::{blockchain::BlockchainClient, contracts::ContractManager, persistence::Persistence};
+use crate::{
+    blockchain::BlockchainClient, contracts::ContractManager, operations::OperationUpdateId,
+    persistence::Persistence,
+};
 
 use super::{
     mux::{Multiplexer, StreamSubscription},
@@ -23,7 +25,7 @@ impl StreamManager {
         blockchain: Arc<BlockchainClient>,
         contracts: Arc<ContractManager>,
         persistence: Arc<dyn Persistence>,
-        operation_update_sink: watch::Sender<DateTime<Utc>>,
+        operation_update_sink: watch::Sender<Option<OperationUpdateId>>,
     ) -> Result<Self> {
         Ok(Self {
             persistence: persistence.clone(),

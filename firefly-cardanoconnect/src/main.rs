@@ -1,4 +1,4 @@
-use std::{path::PathBuf, sync::Arc, time::SystemTime};
+use std::{path::PathBuf, sync::Arc};
 
 use aide::axum::{
     routing::{get, post},
@@ -69,7 +69,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
         Arc::new(ContractManager::none())
     };
 
-    let operation_update_sink = watch::Sender::new(SystemTime::now().into());
+    let operation_update_sink = watch::Sender::new(persistence.latest_operation_update().await?);
     let operations = Arc::new(OperationsManager::new(
         blockchain.clone(),
         contracts.clone(),

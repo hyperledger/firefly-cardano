@@ -4,11 +4,10 @@ use std::{
     time::{Duration, SystemTime},
 };
 
-use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::strong_id;
+use crate::{operations::OperationUpdateId, strong_id};
 
 strong_id!(StreamId, String);
 
@@ -55,7 +54,7 @@ pub enum ListenerFilter {
 #[derive(Clone, Debug)]
 pub struct StreamCheckpoint {
     pub stream_id: StreamId,
-    pub last_operation_at: Option<DateTime<Utc>>,
+    pub last_operation_id: Option<OperationUpdateId>,
     pub listeners: BTreeMap<ListenerId, EventReference>,
 }
 
