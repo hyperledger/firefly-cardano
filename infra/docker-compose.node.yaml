@@ -23,7 +23,7 @@ services:
     healthcheck:
       test: "ls /ipc/node.socket"
       interval: 3s
-      retries: 0
+      retries: 30
     depends_on:
       init-node:
         condition: service_completed_successfully
@@ -47,6 +47,11 @@ services:
       - connect-db:/db
       - ./connect.yaml:/app/config.yaml
       - ./ipc:/ipc
+    depends_on:
+      cardano-node:
+        condition: service_healthy
 
 volumes:
+  connect-contracts:
+  connect-db:
   node-db:

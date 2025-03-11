@@ -14,7 +14,7 @@ use tracing::{error, instrument, warn, Level};
 
 use crate::{
     operations::{Operation, OperationStatus},
-    streams::{Batch, StreamMessage},
+    streams::{Batch, BatchEvent, ContractEvent},
     AppState,
 };
 
@@ -32,11 +32,8 @@ async fn handle_socket(
     };
     let mut subscription = stream_manager.subscribe(&topic).await?;
 
-    while let Some(message) = subscription.recv().await {
-        match message {
-            StreamMessage::Batch(batch) => send_batch(&mut socket, &topic, batch).await?,
-            StreamMessage::Operation(op) => send_operation(&mut socket, op).await?,
-        }
+    while let Some(batch) = subscription.recv().await {
+        send_batch(&mut socket, &topic, batch).await?;
     }
     Ok(())
 }
@@ -44,22 +41,7 @@ async fn handle_socket(
 async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result<()> {
     let outgoing_batch = OutgoingBatch {
         batch_number: batch.batch_number,
-        events: batch
-            .events
-            .iter()
-            .map(|e| Event {
-                listener_id: Some(e.id.listener_id.clone().into()),
-                address: e.id.address.clone(),
-                signature: e.id.signature.clone(),
-                block_number: e.id.block_number,
-                block_hash: e.id.block_hash.clone(),
-                transaction_hash: e.id.transaction_hash.clone(),
-                transaction_index: e.id.transaction_index,
-                log_index: e.id.log_index,
-                timestamp: e.id.timestamp.map(systemtime_to_rfc3339),
-                data: e.data.clone(),
-            })
-            .collect(),
+        events: batch.events.iter().map(|e| e.into()).collect(),
     };
     let outgoing_json = serde_json::to_string(&outgoing_batch)?;
     socket.send(Message::Text(outgoing_json.into())).await?;
@@ -93,26 +75,6 @@ async fn send_batch(socket: &mut WebSocket, topic: &str, batch: Batch) -> Result
     Ok(())
 }
 
-async fn send_operation(socket: &mut WebSocket, op: Operation) -> Result<()> {
-    let operation = OutgoingOperation {
-        headers: OperationHeaders {
-            request_id: op.id.to_string(),
-            type_: match op.status {
-                OperationStatus::Succeeded => "TransactionSuccess".into(),
-                OperationStatus::Pending => "TransactionUpdate".into(),
-                OperationStatus::Failed(_) => "TransactionFailed".into(),
-            },
-        },
-        transaction_hash: op.tx_id.clone(),
-        error_message: op.status.error_message().map(|m| m.to_string()),
-        contract_location: op
-            .contract_address
-            .map(|address| ContractLocation { address }),
-    };
-    let outgoing_json = serde_json::to_string(&operation)?;
-    socket.send(Message::Text(outgoing_json.into())).await?;
-    Ok(())
-}
 fn systemtime_to_rfc3339(value: SystemTime) -> String {
     let date: DateTime<Utc> = value.into();
     date.to_rfc3339()
@@ -175,8 +137,24 @@ async fn read_message(socket: &mut WebSocket) -> Result<Option<IncomingMessage>>
 }
 
 #[derive(Debug, Serialize)]
+#[serde(tag = "type")]
+enum OutgoingEvent {
+    ContractEvent(OutgoingContractEvent),
+    Receipt(OutgoingOperation),
+}
+
+impl From<&BatchEvent> for OutgoingEvent {
+    fn from(value: &BatchEvent) -> Self {
+        match value {
+            BatchEvent::ContractEvent(event) => Self::ContractEvent(event.into()),
+            BatchEvent::Receipt(receipt) => Self::Receipt(receipt.into()),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
 #[serde(rename_all = "camelCase")]
-struct Event {
+struct OutgoingContractEvent {
     listener_id: Option<String>,
     address: Option<String>,
     signature: String,
@@ -189,11 +167,21 @@ struct Event {
     data: serde_json::Value,
 }
 
-#[derive(Debug, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct OutgoingBatch {
-    batch_number: u64,
-    events: Vec<Event>,
+impl From<&ContractEvent> for OutgoingContractEvent {
+    fn from(e: &ContractEvent) -> Self {
+        Self {
+            listener_id: Some(e.id.listener_id.clone().into()),
+            address: e.id.address.clone(),
+            signature: e.id.signature.clone(),
+            block_number: e.id.block_number,
+            block_hash: e.id.block_hash.clone(),
+            transaction_hash: e.id.transaction_hash.clone(),
+            transaction_index: e.id.transaction_index,
+            log_index: e.id.log_index,
+            timestamp: e.id.timestamp.map(systemtime_to_rfc3339),
+            data: e.data.clone(),
+        }
+    }
 }
 
 #[derive(Debug, Serialize)]
@@ -203,6 +191,34 @@ struct OutgoingOperation {
     transaction_hash: Option<String>,
     error_message: Option<String>,
     contract_location: Option<ContractLocation>,
+}
+
+impl From<&Operation> for OutgoingOperation {
+    fn from(op: &Operation) -> Self {
+        Self {
+            headers: OperationHeaders {
+                request_id: op.id.to_string(),
+                type_: match op.status {
+                    OperationStatus::Succeeded => "TransactionSuccess".into(),
+                    OperationStatus::Pending => "TransactionUpdate".into(),
+                    OperationStatus::Failed(_) => "TransactionFailed".into(),
+                },
+            },
+            transaction_hash: op.tx_id.clone(),
+            error_message: op.status.error_message().map(|m| m.to_string()),
+            contract_location: op
+                .contract_address
+                .clone()
+                .map(|address| ContractLocation { address }),
+        }
+    }
+}
+
+#[derive(Debug, Serialize)]
+#[serde(rename_all = "camelCase")]
+struct OutgoingBatch {
+    batch_number: u64,
+    events: Vec<OutgoingEvent>,
 }
 
 #[derive(Debug, Serialize)]

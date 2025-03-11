@@ -1,8 +1,8 @@
 use anyhow::{bail, Result};
 use clap::Parser;
 use firefly::{
-    FireflyCardanoClient, FireflyWebSocketEventBatch, FireflyWebSocketRequest, ListenerFilter,
-    ListenerSettings, ListenerType, StreamSettings,
+    FireflyCardanoClient, FireflyWebSocketEvent, FireflyWebSocketEventBatch,
+    FireflyWebSocketRequest, ListenerFilter, ListenerSettings, ListenerType, StreamSettings,
 };
 use futures::{SinkExt, StreamExt};
 
@@ -149,6 +149,10 @@ async fn main() -> Result<()> {
         };
         println!("received message batch {batch:?}");
         for event in batch.events {
+            let FireflyWebSocketEvent::ContractEvent(event) = event else {
+                println!("ignoring {event:?}");
+                continue;
+            };
             if event.listener_id != tx_listener_id {
                 continue;
             }

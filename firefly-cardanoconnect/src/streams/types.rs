@@ -7,7 +7,7 @@ use std::{
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::strong_id;
+use crate::{operations::OperationUpdateId, strong_id};
 
 strong_id!(StreamId, String);
 
@@ -54,6 +54,7 @@ pub enum ListenerFilter {
 #[derive(Clone, Debug)]
 pub struct StreamCheckpoint {
     pub stream_id: StreamId,
+    pub last_operation_id: Option<OperationUpdateId>,
     pub listeners: BTreeMap<ListenerId, EventReference>,
 }
 
@@ -135,7 +136,7 @@ pub struct EventId {
 }
 
 #[derive(Clone, Debug)]
-pub struct Event {
+pub struct ContractEvent {
     pub id: EventId,
     pub data: serde_json::Value,
 }

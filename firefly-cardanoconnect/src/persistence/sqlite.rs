@@ -6,9 +6,10 @@ use firefly_server::apitypes::{ApiError, ApiResult};
 use rusqlite::{params, types::FromSql, Row, ToSql};
 use serde::Deserialize;
 use tokio_rusqlite::Connection;
+use ulid::Ulid;
 
 use crate::{
-    operations::{Operation, OperationId, OperationStatus},
+    operations::{Operation, OperationId, OperationStatus, OperationUpdate, OperationUpdateId},
     streams::{BlockInfo, BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId},
 };
 
@@ -226,16 +227,21 @@ impl Persistence for SqlitePersistence {
     }
     async fn write_checkpoint(&self, checkpoint: &StreamCheckpoint) -> ApiResult<()> {
         let stream_id = checkpoint.stream_id.to_string();
+        let last_operation_id = checkpoint
+            .last_operation_id
+            .as_ref()
+            .map(|id| id.to_string());
         let listeners = serde_json::to_string(&checkpoint.listeners)?;
         self.conn
             .call_unwrap(move |c| {
                 c.prepare_cached(
-                    "INSERT INTO stream_checkpoints (stream_id, listeners)
-                    VALUES (?1, ?2)
+                    "INSERT INTO stream_checkpoints (stream_id, last_operation_id, listeners)
+                    VALUES (?1, ?2, ?3)
                     ON CONFLICT (stream_id) DO UPDATE SET
+                        last_operation_id=excluded.last_operation_id,
                         listeners=excluded.listeners",
                 )?
-                .execute([stream_id, listeners])?;
+                .execute(params![stream_id, last_operation_id, listeners])?;
                 Ok(())
             })
             .await
@@ -246,7 +252,7 @@ impl Persistence for SqlitePersistence {
             .call_unwrap(move |c| {
                 let Some(checkpoint) = c
                     .prepare_cached(
-                        "SELECT stream_id, listeners
+                        "SELECT stream_id, last_operation_id, listeners
                         FROM stream_checkpoints
                         WHERE stream_id = ?1",
                     )?
@@ -314,13 +320,17 @@ impl Persistence for SqlitePersistence {
         }).await
     }
 
-    async fn write_operation(&self, op: &Operation) -> ApiResult<()> {
+    async fn write_operation(&self, op: &Operation) -> ApiResult<OperationUpdateId> {
         let op = op.clone();
         self.conn
             .call_unwrap(move |c| {
+                let tx = c.transaction()?;
                 let status = op.status.name();
                 let error_message = op.status.error_message();
-                c.prepare_cached(
+
+                let update_id = Ulid::new().to_string();
+
+                tx.prepare_cached(
                     "INSERT INTO operations (id, status, error_message, tx_id, contract_address)
                     VALUES (?1, ?2, ?3, ?4, ?5)
                     ON CONFLICT(id) DO UPDATE SET
@@ -336,7 +346,22 @@ impl Persistence for SqlitePersistence {
                     op.tx_id,
                     op.contract_address,
                 ])?;
-                Ok(())
+
+                tx.prepare_cached(
+                    "INSERT INTO operation_updates (update_id, id, status, error_message, tx_id, contract_address)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+                )?
+                .execute(params![
+                    &update_id,
+                    op.id.to_string(),
+                    status,
+                    error_message,
+                    op.tx_id,
+                    op.contract_address,
+                ])?;
+
+                tx.commit()?;
+                Ok(update_id.into())
             })
             .await
     }
@@ -357,6 +382,41 @@ impl Persistence for SqlitePersistence {
                     return Ok(None);
                 };
                 Ok(Some(op?))
+            })
+            .await
+    }
+
+    async fn list_operation_updates(
+        &self,
+        after: Option<&OperationUpdateId>,
+        limit: usize,
+    ) -> Result<Vec<OperationUpdate>> {
+        let after = after.map(|id| id.to_string()).unwrap_or_default();
+        self.conn
+            .call_unwrap(move |c| {
+                c.prepare_cached(
+                    "SELECT update_id, id, status, error_message, tx_id, contract_address
+                    FROM operation_updates
+                    WHERE update_id > ?1
+                    ORDER BY update_id
+                    LIMIT ?2",
+                )?
+                .query_and_then(params![after, limit as u32], parse_operation_update)?
+                .collect()
+            })
+            .await
+    }
+
+    async fn latest_operation_update(&self) -> Result<Option<OperationUpdateId>> {
+        self.conn
+            .call_unwrap(move |c| {
+                c.prepare_cached(
+                    "SELECT max(update_id) as update_id
+                    FROM operation_updates",
+                )?
+                .query_and_then([], parse_operation_update_id)?
+                .next()
+                .unwrap_or(Ok(None))
             })
             .await
     }
@@ -392,9 +452,11 @@ fn parse_listener(row: &Row) -> ApiResult<Listener> {
 
 fn parse_checkpoint(row: &Row) -> Result<StreamCheckpoint> {
     let stream_id: String = row.get("stream_id")?;
+    let last_operation_id: Option<String> = row.get("last_operation_id")?;
     let listeners: String = row.get("listeners")?;
     Ok(StreamCheckpoint {
         stream_id: stream_id.into(),
+        last_operation_id: last_operation_id.map(|o| o.into()),
         listeners: serde_json::from_str(&listeners)?,
     })
 }
@@ -445,6 +507,20 @@ fn parse_operation(row: &Row) -> Result<Operation> {
         status,
         tx_id,
         contract_address,
+    })
+}
+
+fn parse_operation_update_id(row: &Row) -> Result<Option<OperationUpdateId>> {
+    let update_id: Option<String> = row.get("update_id")?;
+    Ok(update_id.map(|id| id.into()))
+}
+
+fn parse_operation_update(row: &Row) -> Result<OperationUpdate> {
+    let update_id: String = row.get("update_id")?;
+    let operation = parse_operation(row)?;
+    Ok(OperationUpdate {
+        update_id: update_id.into(),
+        operation,
     })
 }
 

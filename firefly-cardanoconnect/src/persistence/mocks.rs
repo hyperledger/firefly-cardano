@@ -5,9 +5,10 @@ use async_trait::async_trait;
 use dashmap::DashMap;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use tokio::sync::Mutex;
+use ulid::Ulid;
 
 use crate::{
-    operations::{Operation, OperationId},
+    operations::{Operation, OperationId, OperationUpdate, OperationUpdateId},
     streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId},
 };
 
@@ -20,6 +21,7 @@ pub struct MockPersistence {
     all_checkpoints: DashMap<StreamId, StreamCheckpoint>,
     all_blocks: DashMap<ListenerId, HashMap<String, BlockRecord>>,
     all_operations: DashMap<OperationId, Operation>,
+    operation_updates: Mutex<Vec<OperationUpdate>>,
 }
 
 #[async_trait]
@@ -170,13 +172,41 @@ impl Persistence for MockPersistence {
         Ok(())
     }
 
-    async fn write_operation(&self, op: &Operation) -> ApiResult<()> {
+    async fn write_operation(&self, op: &Operation) -> ApiResult<OperationUpdateId> {
         self.all_operations.insert(op.id.clone(), op.clone());
-        Ok(())
+        let update_id: OperationUpdateId = Ulid::new().to_string().into();
+        let update = OperationUpdate {
+            update_id: update_id.clone(),
+            operation: op.clone(),
+        };
+        self.operation_updates.lock().await.push(update);
+        Ok(update_id)
     }
 
     async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>> {
         let operation = self.all_operations.get(id).map(|op| op.clone());
         Ok(operation)
+    }
+
+    async fn list_operation_updates(
+        &self,
+        after: Option<&OperationUpdateId>,
+        limit: usize,
+    ) -> Result<Vec<OperationUpdate>> {
+        let updates = self.operation_updates.lock().await;
+        let mut ops: Vec<_> = updates
+            .iter()
+            .rev()
+            .take_while(|update| after.is_none_or(|id| id > &update.update_id))
+            .cloned()
+            .collect();
+        ops.reverse();
+        ops.truncate(limit);
+        Ok(ops)
+    }
+
+    async fn latest_operation_update(&self) -> Result<Option<OperationUpdateId>> {
+        let updates = self.operation_updates.lock().await;
+        Ok(updates.last().map(|u| u.update_id.clone()))
     }
 }
