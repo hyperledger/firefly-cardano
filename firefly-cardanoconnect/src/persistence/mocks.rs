@@ -1,7 +1,11 @@
-use std::collections::HashMap;
+use std::{
+    collections::{HashMap, VecDeque},
+    time::SystemTime,
+};
 
 use anyhow::Result;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use dashmap::DashMap;
 use firefly_server::apitypes::{ApiError, ApiResult};
 use tokio::sync::Mutex;
@@ -20,6 +24,7 @@ pub struct MockPersistence {
     all_checkpoints: DashMap<StreamId, StreamCheckpoint>,
     all_blocks: DashMap<ListenerId, HashMap<String, BlockRecord>>,
     all_operations: DashMap<OperationId, Operation>,
+    operation_history: Mutex<VecDeque<(DateTime<Utc>, Operation)>>,
 }
 
 #[async_trait]
@@ -172,11 +177,30 @@ impl Persistence for MockPersistence {
 
     async fn write_operation(&self, op: &Operation) -> ApiResult<()> {
         self.all_operations.insert(op.id.clone(), op.clone());
+        self.operation_history
+            .lock()
+            .await
+            .push_back((SystemTime::now().into(), op.clone()));
         Ok(())
     }
 
     async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>> {
         let operation = self.all_operations.get(id).map(|op| op.clone());
         Ok(operation)
+    }
+
+    async fn operations_since(
+        &self,
+        timestamp: DateTime<Utc>,
+    ) -> Result<Vec<(DateTime<Utc>, Operation)>> {
+        let history = self.operation_history.lock().await;
+        let mut ops: Vec<_> = history
+            .iter()
+            .rev()
+            .take_while(|(as_of, _)| as_of > &timestamp)
+            .cloned()
+            .collect();
+        ops.reverse();
+        Ok(ops)
     }
 }

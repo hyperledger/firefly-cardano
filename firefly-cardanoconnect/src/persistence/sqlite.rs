@@ -1,7 +1,11 @@
-use std::{path::PathBuf, time::Duration};
+use std::{
+    path::PathBuf,
+    time::{Duration, SystemTime},
+};
 
 use anyhow::{bail, Result};
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use firefly_server::apitypes::{ApiError, ApiResult};
 use rusqlite::{params, types::FromSql, Row, ToSql};
 use serde::Deserialize;
@@ -226,16 +230,18 @@ impl Persistence for SqlitePersistence {
     }
     async fn write_checkpoint(&self, checkpoint: &StreamCheckpoint) -> ApiResult<()> {
         let stream_id = checkpoint.stream_id.to_string();
+        let last_operation_at = checkpoint.last_operation_at.map(|dt| dt.to_rfc3339());
         let listeners = serde_json::to_string(&checkpoint.listeners)?;
         self.conn
             .call_unwrap(move |c| {
                 c.prepare_cached(
-                    "INSERT INTO stream_checkpoints (stream_id, listeners)
-                    VALUES (?1, ?2)
+                    "INSERT INTO stream_checkpoints (stream_id, last_operation_at, listeners)
+                    VALUES (?1, ?2, ?3)
                     ON CONFLICT (stream_id) DO UPDATE SET
+                        last_operation_at=excluded.last_operation_at,
                         listeners=excluded.listeners",
                 )?
-                .execute([stream_id, listeners])?;
+                .execute(params![stream_id, last_operation_at, listeners])?;
                 Ok(())
             })
             .await
@@ -246,7 +252,7 @@ impl Persistence for SqlitePersistence {
             .call_unwrap(move |c| {
                 let Some(checkpoint) = c
                     .prepare_cached(
-                        "SELECT stream_id, listeners
+                        "SELECT stream_id, last_operation_at, listeners
                         FROM stream_checkpoints
                         WHERE stream_id = ?1",
                     )?
@@ -318,9 +324,12 @@ impl Persistence for SqlitePersistence {
         let op = op.clone();
         self.conn
             .call_unwrap(move |c| {
+                let tx = c.transaction()?;
                 let status = op.status.name();
                 let error_message = op.status.error_message();
-                c.prepare_cached(
+                let now: DateTime<Utc> = SystemTime::now().into();
+
+                tx.prepare_cached(
                     "INSERT INTO operations (id, status, error_message, tx_id, contract_address)
                     VALUES (?1, ?2, ?3, ?4, ?5)
                     ON CONFLICT(id) DO UPDATE SET
@@ -336,6 +345,21 @@ impl Persistence for SqlitePersistence {
                     op.tx_id,
                     op.contract_address,
                 ])?;
+
+                tx.prepare_cached(
+                    "INSERT INTO operations_history (id, status, error_message, tx_id, contract_address, timestamp)
+                    VALUES (?1, ?2, ?3, ?4, ?5, ?6)"
+                )?
+                .execute(params![
+                    op.id.to_string(),
+                    status,
+                    error_message,
+                    op.tx_id,
+                    op.contract_address,
+                    now.to_rfc3339(),
+                ])?;
+
+                tx.commit()?;
                 Ok(())
             })
             .await
@@ -357,6 +381,24 @@ impl Persistence for SqlitePersistence {
                     return Ok(None);
                 };
                 Ok(Some(op?))
+            })
+            .await
+    }
+
+    async fn operations_since(
+        &self,
+        timestamp: DateTime<Utc>,
+    ) -> Result<Vec<(DateTime<Utc>, Operation)>> {
+        self.conn
+            .call_unwrap(move |c| {
+                c.prepare_cached(
+                    "SELECT id, status, error_message, tx_id, contract_address, timestamp
+                    FROM operations_history
+                    WHERE timestamp > ?1
+                    ORDER BY timestamp",
+                )?
+                .query_and_then([timestamp.to_rfc3339()], parse_operation_history)?
+                .collect()
             })
             .await
     }
@@ -392,9 +434,14 @@ fn parse_listener(row: &Row) -> ApiResult<Listener> {
 
 fn parse_checkpoint(row: &Row) -> Result<StreamCheckpoint> {
     let stream_id: String = row.get("stream_id")?;
+    let last_operation_at: Option<String> = row.get("last_operation_at")?;
     let listeners: String = row.get("listeners")?;
     Ok(StreamCheckpoint {
         stream_id: stream_id.into(),
+        last_operation_at: last_operation_at.and_then(|s| {
+            let dt = DateTime::parse_from_rfc3339(&s).ok()?;
+            Some(dt.to_utc())
+        }),
         listeners: serde_json::from_str(&listeners)?,
     })
 }
@@ -446,6 +493,12 @@ fn parse_operation(row: &Row) -> Result<Operation> {
         tx_id,
         contract_address,
     })
+}
+
+fn parse_operation_history(row: &Row) -> Result<(DateTime<Utc>, Operation)> {
+    let timestamp: String = row.get("timestamp")?;
+    let timestamp = DateTime::parse_from_rfc3339(&timestamp)?.to_utc();
+    Ok((timestamp, parse_operation(row)?))
 }
 
 struct SqliteDuration(Duration);

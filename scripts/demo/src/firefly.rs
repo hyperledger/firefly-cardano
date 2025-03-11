@@ -160,8 +160,15 @@ impl TryFrom<Message> for FireflyWebSocketEventBatch {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+pub enum FireflyWebSocketEvent {
+    ContractEvent(FireflyWebSocketContractEvent),
+    Receipt,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FireflyWebSocketEvent {
+pub struct FireflyWebSocketContractEvent {
     pub listener_id: String,
     pub signature: String,
     pub block_number: u64,

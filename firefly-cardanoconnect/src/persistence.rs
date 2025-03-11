@@ -2,6 +2,7 @@ use std::sync::Arc;
 
 use anyhow::Result;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use firefly_server::apitypes::ApiResult;
 use mocks::MockPersistence;
 use serde::Deserialize;
@@ -64,6 +65,10 @@ pub trait Persistence: Sync + Send {
 
     async fn write_operation(&self, op: &Operation) -> ApiResult<()>;
     async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>>;
+    async fn operations_since(
+        &self,
+        timestamp: DateTime<Utc>,
+    ) -> Result<Vec<(DateTime<Utc>, Operation)>>;
 }
 
 pub async fn init(config: &PersistenceConfig) -> Result<Arc<dyn Persistence>> {

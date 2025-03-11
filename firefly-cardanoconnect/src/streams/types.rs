@@ -4,6 +4,7 @@ use std::{
     time::{Duration, SystemTime},
 };
 
+use chrono::{DateTime, Utc};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
@@ -54,6 +55,7 @@ pub enum ListenerFilter {
 #[derive(Clone, Debug)]
 pub struct StreamCheckpoint {
     pub stream_id: StreamId,
+    pub last_operation_at: Option<DateTime<Utc>>,
     pub listeners: BTreeMap<ListenerId, EventReference>,
 }
 
@@ -135,7 +137,7 @@ pub struct EventId {
 }
 
 #[derive(Clone, Debug)]
-pub struct Event {
+pub struct ContractEvent {
     pub id: EventId,
     pub data: serde_json::Value,
 }

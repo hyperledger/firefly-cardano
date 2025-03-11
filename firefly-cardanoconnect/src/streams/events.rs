@@ -6,7 +6,7 @@ use crate::contracts::ContractListener;
 
 use super::{
     blockchain::{ChainListener, ListenerEvent},
-    BlockInfo, BlockReference, Event, EventId, EventReference, ListenerFilter, ListenerId,
+    BlockInfo, BlockReference, ContractEvent, EventId, EventReference, ListenerFilter, ListenerId,
 };
 
 pub struct ChainEventStream {
@@ -14,7 +14,7 @@ pub struct ChainEventStream {
     filters: Vec<ListenerFilter>,
     sync: ChainListener,
     contract: ContractListener,
-    cache: HashMap<BlockReference, Vec<(EventReference, Event)>>,
+    cache: HashMap<BlockReference, Vec<(EventReference, ContractEvent)>>,
 }
 
 impl ChainEventStream {
@@ -36,7 +36,7 @@ impl ChainEventStream {
     pub async fn try_get_next_event(
         &mut self,
         hwm: &EventReference,
-    ) -> Option<(EventReference, Event)> {
+    ) -> Option<(EventReference, ContractEvent)> {
         let mut next_hwm = hwm.clone();
         loop {
             if let Some(result) = self.next_event_in_memory(&next_hwm) {
@@ -56,7 +56,10 @@ impl ChainEventStream {
         }
     }
 
-    pub async fn wait_for_next_event(&mut self, hwm: &EventReference) -> (EventReference, Event) {
+    pub async fn wait_for_next_event(
+        &mut self,
+        hwm: &EventReference,
+    ) -> (EventReference, ContractEvent) {
         let mut next_hwm = hwm.clone();
         loop {
             if let Some(result) = self.next_event_in_memory(&next_hwm) {
@@ -76,7 +79,10 @@ impl ChainEventStream {
         }
     }
 
-    fn next_event_in_memory(&mut self, hwm: &EventReference) -> Option<(EventReference, Event)> {
+    fn next_event_in_memory(
+        &mut self,
+        hwm: &EventReference,
+    ) -> Option<(EventReference, ContractEvent)> {
         let cached = self.cache.get(&hwm.block)?;
         if hwm.tx_index.is_none() && hwm.log_index.is_none() {
             // We haven't processed any events from this block yet, so just process the first
@@ -128,7 +134,7 @@ impl ChainEventStream {
         &mut self,
         rollbacks: Vec<BlockInfo>,
         block: BlockInfo,
-    ) -> Option<(EventReference, Event)> {
+    ) -> Option<(EventReference, ContractEvent)> {
         if self.cache.contains_key(&block.as_reference()) {
             // we already gathered these events
             return None;
@@ -151,7 +157,7 @@ impl ChainEventStream {
         &mut self,
         block: &BlockInfo,
         rollback: bool,
-    ) -> Vec<(EventReference, Event)> {
+    ) -> Vec<(EventReference, ContractEvent)> {
         let block_ref = block.as_reference();
         let mut events = vec![];
         let mut contract_events: HashMap<_, Vec<_>> = HashMap::new();
@@ -182,7 +188,7 @@ impl ChainEventStream {
                     log_index: log_idx,
                     timestamp: Some(SystemTime::now()),
                 };
-                let event = Event {
+                let event = ContractEvent {
                     id,
                     data: json!({}),
                 };
@@ -207,7 +213,7 @@ impl ChainEventStream {
                     log_index: log_idx,
                     timestamp: Some(SystemTime::now()),
                 };
-                let event = Event {
+                let event = ContractEvent {
                     id,
                     data: contract_event.data,
                 };
