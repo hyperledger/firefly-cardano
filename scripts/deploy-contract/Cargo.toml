@@ -1,6 +1,6 @@
 [package]
 name = "firefly-cardano-deploy-contract"
-version = "0.1.0"
+version = "0.2.0"
 description = "A script to build and deploy a Balius smart contract to the FireFly Cardano connector"
 license-file.workspace = true
 publish = false
