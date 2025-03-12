@@ -74,6 +74,7 @@ jobs:
           platforms: linux/amd64
           provenance: false
           tags: ghcr.io/${{ github.repository_owner }}/${{ matrix.service-name }}:${{ github.ref_name }},ghcr.io/${{ github.repository_owner }}/${{ matrix.service-name }}:head,${{ env.DOCKER_TAGS }}
+          target: ${{ matrix.service-name }}
           labels: |
             commit=${{ github.sha }}
             build_date=${{ steps.build_tag_generator.outputs.BUILD_DATE }}
