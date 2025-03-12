@@ -1,7 +1,11 @@
 [package]
 name = "firefly-cardano-generate-key"
-version = "0.1.0"
+version = "0.2.0"
+description = "A script to easily generate Cardano addresses"
+license-file.workspace = true
+publish = false
 edition = "2021"
+repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
 anyhow = "1"

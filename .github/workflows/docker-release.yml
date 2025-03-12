@@ -1,0 +1,82 @@
+name: Docker Release Build
+
+on:
+  release:
+    types: [released, prereleased]
+
+permissions:
+  contents: read
+
+jobs:
+  docker:
+    runs-on: ubuntu-latest
+    permissions:
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+    
+      - name: Set up Docker Buildx
+        id: buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker login
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set latest tag
+        if: github.event.action == 'released'
+        run: |
+          echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository }}:latest" >> $GITHUB_ENV
+
+      - name: Set alpha tag
+        if: github.event.action == 'prereleased' && contains(github.ref, 'alpha')
+        run: |
+          echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository }}:alpha" >> $GITHUB_ENV
+
+      - name: Set beta tag
+        if: github.event.action == 'prereleased' && contains(github.ref, 'beta')
+        run: |
+          echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository }}:beta" >> $GITHUB_ENV
+
+      - name: Set rc tag
+        if: github.event.action == 'prereleased' && contains(github.ref, 'rc')
+        run: |
+          echo "DOCKER_TAGS=${{ env.DOCKER_TAGS }},ghcr.io/${{ github.repository }}:rc" >> $GITHUB_ENV
+
+      - name: Set build tag
+        id: build_tag_generator
+        run: |
+          RELEASE_TAG=$(curl https://api.github.com/repos/${{ github.repository }}/releases/latest -s | jq .tag_name -r)
+          BUILD_TAG=$RELEASE_TAG-$(date +"%Y%m%d")-$GITHUB_RUN_NUMBER
+          BUILD_DATE=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
+          echo "BUILD_TAG=$BUILD_TAG" >> $GITHUB_OUTPUT
+          echo "BUILD_DATE=$BUILD_DATE" >> $GITHUB_OUTPUT
+          echo "RELEASE_TAG=$RELEASE_TAG" >> $GITHUB_OUTPUT
+
+      - name: Build and push
+        uses: docker/build-push-action@v5
+        with:
+          context: ./
+          file: ./Dockerfile
+          builder: ${{ steps.buildx.outputs.name }}
+          push: true
+          platforms: linux/amd64
+          provenance: false
+          tags: ghcr.io/${{ github.repository }}:${{ github.ref_name }},ghcr.io/${{ github.repository }}:head,${{ env.DOCKER_TAGS }}
+          labels: |
+            commit=${{ github.sha }}
+            build_date=${{ steps.build_tag_generator.outputs.BUILD_DATE }}
+            tag=${{ steps.build_tag_generator.outputs.RELEASE_TAG }}
+          cache-from: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache
+          cache-to: type=registry,ref=ghcr.io/${{ github.repository }}:buildcache,mode=max
+          build-args: |
+            BUILD_VERSION=${{ steps.build_tag_generator.outputs.RELEASE_TAG }}
+            GIT_REF=${{ github.ref }}

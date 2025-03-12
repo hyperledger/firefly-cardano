@@ -1109,7 +1109,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-balius"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "balius-sdk",
  "hex",
@@ -1119,7 +1119,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-cardano-demo"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1134,7 +1134,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-cardano-deploy"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1150,7 +1150,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-cardano-deploy-contract"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "clap",
@@ -1165,7 +1165,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-cardano-generate-key"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "anyhow",
  "bech32 0.11.0",
@@ -1181,7 +1181,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-cardanoconnect"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aide",
  "anyhow",
@@ -1222,7 +1222,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-cardanosigner"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aide",
  "anyhow",
@@ -1246,7 +1246,7 @@ dependencies = [
 
 [[package]]
 name = "firefly-server"
-version = "0.1.0"
+version = "0.2.0"
 dependencies = [
  "aide",
  "anyhow",

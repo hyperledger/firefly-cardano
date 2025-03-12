@@ -1,8 +1,11 @@
 [package]
 name = "firefly-cardanoconnect"
-version = "0.1.0"
+version = "0.2.0"
+description = "An implementation of the FireFly Connector API for Cardano"
+license-file.workspace = true
+publish = false
 edition = "2021"
-repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
+repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
 aide = { version = "0.14", features = ["axum", "axum-json", "axum-query"] }
