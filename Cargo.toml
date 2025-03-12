@@ -1,5 +1,7 @@
 [workspace]
 
+package.license-file = "LICENSE"
+
 members = [
     "firefly-balius",
     "firefly-cardanoconnect",

@@ -1,7 +1,11 @@
 [package]
 name = "firefly-cardano-demo"
 version = "0.1.0"
+description = "A demo of the firefly-cardanoconnect API"
+license-file.workspace = true
+publish = false
 edition = "2021"
+repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
 anyhow = "1"
