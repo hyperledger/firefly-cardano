@@ -16,3 +16,6 @@ members = [
 exclude = ["wasm"]
 
 resolver = "2"
+
+[workspace.metadata.release]
+tag = false
