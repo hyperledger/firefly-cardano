@@ -276,12 +276,16 @@ impl ContractRuntimeWorker {
 
         self.head = block.as_reference();
 
-        self.check_for_tx_lifecycle_events(block).await?;
+        self.check_for_tx_lifecycle_events(rollbacks, block).await?;
 
         Ok(())
     }
 
-    async fn check_for_tx_lifecycle_events(&mut self, block: &BlockInfo) -> Result<()> {
+    async fn check_for_tx_lifecycle_events(
+        &mut self,
+        rollbacks: &[BlockInfo],
+        block: &BlockInfo,
+    ) -> Result<()> {
         let Some(block_height) = block.block_height else {
             return Ok(());
         };
@@ -297,11 +301,25 @@ impl ContractRuntimeWorker {
         let mut updated_monitored_txs = false;
         let mut updated_tx_finalization_heights = false;
 
+        for rolled_back_block in rollbacks {
+            for hash in &rolled_back_block.transaction_hashes {
+                // If a TX which we're watching has been rolled back, don't emit a finalized event for it
+                // (unless it gets reapplied in another block)
+                if monitored_txs.contains_key(hash) {
+                    tx_finalization_heights.retain(|_, hashes| {
+                        if hashes.remove(hash) {
+                            updated_tx_finalization_heights = true;
+                        }
+                        !hashes.is_empty()
+                    });
+                }
+            }
+        }
+
         for hash in &block.transaction_hashes {
-            if let Some(condition) = monitored_txs.remove(hash) {
+            if let Some(condition) = monitored_txs.get(hash) {
                 // A transaction we were monitoring has been submitted.
                 // Now we know when it can be finalized.
-                updated_monitored_txs = true;
 
                 let FinalizationCondition::AfterBlocks(blocks_to_wait) = condition;
                 let finalized_at_height = block_height + blocks_to_wait;
@@ -323,6 +341,10 @@ impl ContractRuntimeWorker {
 
                 let (_, txs) = tx_finalization_heights.pop_first().unwrap();
                 for hash in txs {
+                    if monitored_txs.remove(&hash).is_some() {
+                        updated_monitored_txs = true;
+                    }
+
                     new_events.push(RawEvent {
                         tx_hash: hex::decode(finalized_hash).unwrap(),
                         signature: "TransactionFinalized(string)".into(),
