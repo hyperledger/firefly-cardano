@@ -1,6 +1,6 @@
 [package]
 name = "firefly-cardanoconnect"
-version = "0.2.1"
+version = "0.3.0"
 description = "An implementation of the FireFly Connector API for Cardano"
 license-file.workspace = true
 publish = false

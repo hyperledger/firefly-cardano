@@ -24,6 +24,7 @@ jobs:
       - name: Add wasm32-unknown-unknown target
         run: rustup target add wasm32-unknown-unknown
       - name: Logs
+        if: always()
         run: |
           docker compose -f ./infra/docker-compose.node.yaml -p preview logs
           docker ps -a

@@ -5,9 +5,11 @@ use balius_sdk::{
         AddressPattern, BuildError, FeeChangeReturn, OutputBuilder, TxBuilder, UtxoPattern,
         UtxoSource,
     },
-    Ack, Config, FnHandler, NewTx, Params, Utxo, Worker, WorkerResult,
+    Ack, Config, FnHandler, Json, NewTx, Params, Utxo, Worker, WorkerResult,
 };
-use firefly_balius::{emit_events, kv, CoinSelectionInput, Event, EventData, SubmittedTx, WorkerExt as _};
+use firefly_balius::{
+    emit_events, kv, CoinSelectionInput, Event, EventData, SubmittedTx, WorkerExt as _,
+};
 use pallas_addresses::Address;
 use serde::{Deserialize, Serialize};
 
@@ -26,7 +28,7 @@ struct TxSubmittedEventData {
 }
 impl EventData for TxSubmittedEventData {
     fn signature(&self) -> String {
-        "TransactionSubmitted(string)".into()        
+        "TransactionSubmitted(string)".into()
     }
 }
 
@@ -83,11 +85,20 @@ fn handle_utxo(_: Config<()>, utxo: Utxo<()>) -> WorkerResult<Ack> {
     let mut submitted_txs: HashSet<String> = kv::get("submitted_txs")?.unwrap_or_default();
     let tx_id = hex::encode(&utxo.tx_hash);
     if submitted_txs.remove(&tx_id) {
-        events.push(Event::new(&utxo, &TxSubmittedEventData { tx_id: tx_id.clone() })?);
+        events.push(Event::new(
+            &utxo,
+            &TxSubmittedEventData {
+                tx_id: tx_id.clone(),
+            },
+        )?);
 
         kv::set("submitted_txs", &submitted_txs)?;
-        let mut pending_txs: BTreeMap<u64, Vec<String>> = kv::get("pending_txs")?.unwrap_or_default();
-        pending_txs.entry(utxo.block_height).or_default().push(tx_id.clone());
+        let mut pending_txs: BTreeMap<u64, Vec<String>> =
+            kv::get("pending_txs")?.unwrap_or_default();
+        pending_txs
+            .entry(utxo.block_height)
+            .or_default()
+            .push(tx_id.clone());
         kv::set("pending_txs", &pending_txs)?;
     }
 
@@ -101,7 +112,12 @@ fn handle_utxo(_: Config<()>, utxo: Utxo<()>) -> WorkerResult<Ack> {
         }
         txs_processed = true;
         for tx_id in pending_txs.remove(&height).unwrap() {
-            events.push(Event::new(&utxo, &TxFinalizedEventData { tx_id: tx_id.clone() })?);
+            events.push(Event::new(
+                &utxo,
+                &TxFinalizedEventData {
+                    tx_id: tx_id.clone(),
+                },
+            )?);
         }
     }
     if txs_processed {
@@ -112,10 +128,25 @@ fn handle_utxo(_: Config<()>, utxo: Utxo<()>) -> WorkerResult<Ack> {
     Ok(Ack)
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct CurrentState {
+    submitted_txs: HashSet<String>,
+    pending_txs: BTreeMap<u64, Vec<String>>,
+}
+
+fn query_current_state(_: Config<()>, _: Params<()>) -> WorkerResult<Json<CurrentState>> {
+    Ok(Json(CurrentState {
+        submitted_txs: kv::get("submitted_txs")?.unwrap_or_default(),
+        pending_txs: kv::get("pending_txs")?.unwrap_or_default(),
+    }))
+}
+
 #[balius_sdk::main]
 fn main() -> Worker {
     Worker::new()
         .with_request_handler("send_ada", FnHandler::from(send_ada))
+        .with_request_handler("current_state", FnHandler::from(query_current_state))
         .with_tx_submitted_handler(handle_submit)
         .with_utxo_handler(
             balius_sdk::wit::balius::app::driver::UtxoPattern {

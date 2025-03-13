@@ -9,7 +9,7 @@ use dashmap::{DashMap, Entry};
 pub use runtime::ContractEvent;
 use runtime::ContractRuntime;
 use serde::Deserialize;
-use serde_json::Value;
+use serde_json::{json, Value};
 use tokio::fs;
 use tracing::{error, warn};
 
@@ -89,6 +89,19 @@ impl ContractManager {
         match response {
             Response::PartialTx(bytes) => Ok(Some(bytes)),
             _ => Ok(None),
+        }
+    }
+
+    pub async fn query(&self, contract: &str, method: &str, params: Value) -> Result<Value> {
+        let Some(runtime) = self.runtimes.get(contract) else {
+            bail!("unrecognized contract {contract}");
+        };
+        let response = runtime.invoke(method, params).await?;
+        match response {
+            Response::Acknowledge => Ok(json!({})),
+            Response::Cbor(bytes) => Ok(json!({ "cbor": hex::encode(bytes) })),
+            Response::Json(bytes) => Ok(serde_json::from_slice(&bytes)?),
+            Response::PartialTx(_) => bail!("Cannot build transactions from query"),
         }
     }
 
