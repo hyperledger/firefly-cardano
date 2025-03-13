@@ -96,6 +96,10 @@ impl OperationsManager {
         Ok(())
     }
 
+    pub async fn query(&self, contract: &str, method: &str, params: Value) -> ApiResult<Value> {
+        Ok(self.contracts.query(contract, method, params).await?)
+    }
+
     pub async fn get_operation(&self, id: &OperationId) -> ApiResult<Operation> {
         let Some(op) = self.persistence.read_operation(id).await? else {
             return Err(ApiError::not_found("No operation found with that id"));

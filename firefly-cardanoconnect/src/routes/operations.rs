@@ -10,6 +10,16 @@ use serde_json::Value;
 use crate::{operations::Operation, AppState};
 
 #[derive(Deserialize, JsonSchema)]
+pub struct QueryRequest {
+    /// The name of the contract getting invoked.
+    pub address: String,
+    /// A description of the method getting invoked.
+    pub method: ABIMethod,
+    /// Any parameters needed to invoke the method.
+    pub params: Vec<Value>,
+}
+
+#[derive(Deserialize, JsonSchema)]
 pub struct InvokeRequest {
     /// The FireFly operation ID of this request.
     pub id: String,
@@ -117,6 +127,20 @@ pub async fn invoke_contract(
         Ok(()) => Ok(NoContent),
         Err(error) => Err(error.with_field("submissionRejected", true)),
     }
+}
+
+pub async fn query_contract(
+    State(AppState { operations, .. }): State<AppState>,
+    Json(req): Json<QueryRequest>,
+) -> ApiResult<Json<Value>> {
+    let contract = &req.address;
+    let method = &req.method.name;
+    let mut params = serde_json::Map::new();
+    for (schema, value) in req.method.params.iter().zip(req.params.into_iter()) {
+        params.insert(schema.name.to_string(), value);
+    }
+    let result = operations.query(contract, method, params.into()).await?;
+    Ok(Json(result))
 }
 
 pub async fn get_operation_status(
