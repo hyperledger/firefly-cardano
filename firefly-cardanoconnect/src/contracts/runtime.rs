@@ -1,8 +1,16 @@
-use std::{path::PathBuf, sync::Arc};
+use std::{
+    collections::{BTreeMap, HashMap, HashSet},
+    path::PathBuf,
+    sync::Arc,
+};
 
 use anyhow::{bail, Context as _, Result};
-use balius_runtime::{kv::Kv, ledgers::Ledger, ChainPoint, Response, Runtime, Store};
-use serde::Deserialize;
+use balius_runtime::{
+    kv::{CustomKv, Kv, KvError},
+    ledgers::Ledger,
+    ChainPoint, Response, Runtime, Store,
+};
+use serde::{de::DeserializeOwned, Deserialize, Serialize};
 use serde_json::{json, Value};
 use tokio::sync::{mpsc, oneshot, Mutex};
 use tracing::warn;
@@ -268,6 +276,100 @@ impl ContractRuntimeWorker {
 
         self.head = block.as_reference();
 
+        self.check_for_tx_lifecycle_events(block).await?;
+
+        Ok(())
+    }
+
+    async fn check_for_tx_lifecycle_events(&mut self, block: &BlockInfo) -> Result<()> {
+        let Some(block_height) = block.block_height else {
+            return Ok(());
+        };
+
+        let mut monitored_txs: HashMap<String, FinalizationCondition> =
+            self.get_value("__monitored_txs").await?.unwrap_or_default();
+        let mut tx_finalization_heights: BTreeMap<u64, HashSet<String>> = self
+            .get_value("__tx_finalization_heights")
+            .await?
+            .unwrap_or_default();
+        let mut new_events = vec![];
+
+        let mut updated_monitored_txs = false;
+        let mut updated_tx_finalization_heights = false;
+
+        for hash in &block.transaction_hashes {
+            if let Some(condition) = monitored_txs.remove(hash) {
+                // A transaction we were monitoring has been submitted.
+                // Now we know when it can be finalized.
+                updated_monitored_txs = true;
+
+                let FinalizationCondition::AfterBlocks(blocks_to_wait) = condition;
+                let finalized_at_height = block_height + blocks_to_wait;
+                tx_finalization_heights
+                    .entry(finalized_at_height)
+                    .or_default()
+                    .insert(hash.clone());
+                updated_tx_finalization_heights = true;
+            }
+        }
+
+        if let Some(finalized_hash) = block.transaction_hashes.first() {
+            while tx_finalization_heights
+                .first_key_value()
+                .is_some_and(|(height, _)| height <= &block_height)
+            {
+                // A transaction we were monitoring has been finalized.
+                updated_tx_finalization_heights = true;
+
+                let (_, txs) = tx_finalization_heights.pop_first().unwrap();
+                for hash in txs {
+                    new_events.push(RawEvent {
+                        tx_hash: hex::decode(finalized_hash).unwrap(),
+                        signature: "TransactionFinalized(string)".into(),
+                        data: json!({
+                            "transactionId": hash,
+                        }),
+                    });
+                }
+            }
+        }
+
+        if !new_events.is_empty() {
+            let events_key = format!("__events_{}", block.block_hash);
+            let mut events: Vec<RawEvent> = self.get_value(&events_key).await?.unwrap_or_default();
+            events.append(&mut new_events);
+            self.set_value(events_key, events).await?;
+        }
+
+        if updated_tx_finalization_heights {
+            self.set_value("__tx_finalization_heights", tx_finalization_heights)
+                .await?;
+        }
+
+        if updated_monitored_txs {
+            self.set_value("__monitored_txs", monitored_txs).await?;
+        }
+
+        Ok(())
+    }
+
+    async fn get_value<T: DeserializeOwned>(&mut self, key: impl AsRef<str>) -> Result<Option<T>> {
+        let Some(kv) = &mut self.kv else {
+            bail!("No KV store configured");
+        };
+        match kv.get_value(key.as_ref().into()).await {
+            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
+            Err(KvError::NotFound(_)) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    async fn set_value<T: Serialize>(&mut self, key: impl AsRef<str>, value: T) -> Result<()> {
+        let Some(kv) = &mut self.kv else {
+            bail!("No KV store configured");
+        };
+        kv.set_value(key.as_ref().into(), serde_json::to_vec(&value)?)
+            .await?;
         Ok(())
     }
 }
@@ -280,9 +382,14 @@ pub struct ContractEvent {
     pub data: serde_json::Value,
 }
 
-#[derive(Clone, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct RawEvent {
     pub tx_hash: Vec<u8>,
     pub signature: String,
     pub data: serde_json::Value,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum FinalizationCondition {
+    AfterBlocks(u64),
 }

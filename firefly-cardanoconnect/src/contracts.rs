@@ -111,7 +111,8 @@ impl ContractManager {
             "hash": tx_id,
         });
         let runtime = self.get_contract_runtime(contract).await;
-        let _: Result<_, _> = runtime.invoke("__tx_submitted", params).await;
+        let _: Result<_, _> = runtime.invoke("__tx_submitted", params.clone()).await;
+        let _: Result<_, _> = runtime.invoke("__finalization_monitor", params).await;
     }
 
     pub async fn listen(&self, listener: &Listener) -> ContractListener {

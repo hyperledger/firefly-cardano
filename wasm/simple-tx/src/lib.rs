@@ -1,16 +1,14 @@
-use std::collections::{BTreeMap, HashSet};
+use std::collections::HashSet;
 
-use firefly_balius::balius_sdk;
 use balius_sdk::{
     txbuilder::{
         AddressPattern, BuildError, FeeChangeReturn, OutputBuilder, TxBuilder, UtxoPattern,
         UtxoSource,
     },
-    Ack, Config, FnHandler, Json, NewTx, Params, Utxo, Worker, WorkerResult,
+    Ack, Config, FnHandler, Json, NewTx, Params, Worker, WorkerResult,
 };
-use firefly_balius::{
-    emit_events, kv, CoinSelectionInput, Event, EventData, SubmittedTx, WorkerExt as _,
-};
+use firefly_balius::{balius_sdk, FinalityMonitor, FinalizationCondition};
+use firefly_balius::{kv, CoinSelectionInput, SubmittedTx, WorkerExt as _};
 use pallas_addresses::Address;
 use serde::{Deserialize, Serialize};
 
@@ -22,26 +20,10 @@ struct SendAdaRequest {
     pub amount: u64,
 }
 
-#[derive(Serialize)]
-struct TxSubmittedEventData {
-    #[serde(rename = "transactionId")]
-    pub tx_id: String,
-}
-impl EventData for TxSubmittedEventData {
-    fn signature(&self) -> String {
-        "TransactionSubmitted(string)".into()
-    }
-}
-
-#[derive(Serialize)]
-struct TxFinalizedEventData {
-    #[serde(rename = "transactionId")]
-    pub tx_id: String,
-}
-impl EventData for TxFinalizedEventData {
-    fn signature(&self) -> String {
-        "TransactionFinalized(string)".into()
-    }
+#[derive(Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+struct CurrentState {
+    submitted_txs: HashSet<String>,
 }
 
 fn send_ada(_: Config<()>, req: Params<SendAdaRequest>) -> WorkerResult<NewTx> {
@@ -71,76 +53,20 @@ fn send_ada(_: Config<()>, req: Params<SendAdaRequest>) -> WorkerResult<NewTx> {
 
 fn handle_submit(_: Config<()>, tx: SubmittedTx) -> WorkerResult<Ack> {
     // A TX which we produced before was submitted to the blockchain.
-    // It hasn't reached the chain yet, but track it so we can react when it does.
-    let mut submitted_txs: HashSet<String> = kv::get("submitted_txs")?.unwrap_or_default();
-    submitted_txs.insert(tx.hash);
-    kv::set("submitted_txs", &submitted_txs)?;
+    // It hasn't reached the chain yet
+    // Consider it finalized after 4 new blocks have been minted.
+    FinalityMonitor.monitor_tx(&tx.hash, FinalizationCondition::AfterBlocks(4))?;
+
+    // Keep track of which TXs have been submitted.
+    let mut state: CurrentState = kv::get("current_state")?.unwrap_or_default();
+    state.submitted_txs.insert(tx.hash);
+    kv::set("current_state", &state)?;
 
     Ok(Ack)
-}
-
-fn handle_utxo(_: Config<()>, utxo: Utxo<()>) -> WorkerResult<Ack> {
-    let mut events = vec![];
-
-    // If we see a submitted block on the chain, track that we see it
-    let mut submitted_txs: HashSet<String> = kv::get("submitted_txs")?.unwrap_or_default();
-    let tx_id = hex::encode(&utxo.tx_hash);
-    if submitted_txs.remove(&tx_id) {
-        events.push(Event::new(
-            &utxo,
-            &TxSubmittedEventData {
-                tx_id: tx_id.clone(),
-            },
-        )?);
-
-        kv::set("submitted_txs", &submitted_txs)?;
-        let mut pending_txs: BTreeMap<u64, Vec<String>> =
-            kv::get("pending_txs")?.unwrap_or_default();
-        pending_txs
-            .entry(utxo.block_height)
-            .or_default()
-            .push(tx_id.clone());
-        kv::set("pending_txs", &pending_txs)?;
-    }
-
-    // If any submitted transactions have been waiting on the chain long enough,
-    // emit an event that says they've been "finalized"
-    let mut pending_txs: BTreeMap<u64, Vec<String>> = kv::get("pending_txs")?.unwrap_or_default();
-    let mut txs_processed = false;
-    while let Some((&height, _)) = pending_txs.first_key_value() {
-        if height > utxo.block_height - 4 {
-            break;
-        }
-        txs_processed = true;
-        for tx_id in pending_txs.remove(&height).unwrap() {
-            events.push(Event::new(
-                &utxo,
-                &TxFinalizedEventData {
-                    tx_id: tx_id.clone(),
-                },
-            )?);
-        }
-    }
-    if txs_processed {
-        kv::set("pending_txs", &pending_txs)?;
-    }
-
-    emit_events(events)?;
-    Ok(Ack)
-}
-
-#[derive(Serialize)]
-#[serde(rename_all = "camelCase")]
-struct CurrentState {
-    submitted_txs: HashSet<String>,
-    pending_txs: BTreeMap<u64, Vec<String>>,
 }
 
 fn query_current_state(_: Config<()>, _: Params<()>) -> WorkerResult<Json<CurrentState>> {
-    Ok(Json(CurrentState {
-        submitted_txs: kv::get("submitted_txs")?.unwrap_or_default(),
-        pending_txs: kv::get("pending_txs")?.unwrap_or_default(),
-    }))
+    Ok(Json(kv::get("current_state")?.unwrap_or_default()))
 }
 
 #[balius_sdk::main]
@@ -149,5 +75,4 @@ fn main() -> Worker {
         .with_request_handler("send_ada", FnHandler::from(send_ada))
         .with_request_handler("current_state", FnHandler::from(query_current_state))
         .with_tx_submitted_handler(handle_submit)
-        .with_new_txo_handler(FnHandler::from(handle_utxo))
 }
