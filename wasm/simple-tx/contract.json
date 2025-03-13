@@ -30,6 +30,34 @@
         }
       ],
       "returns": []
+    },
+    {
+      "description": "Queries the current state of this contract",
+      "details": {},
+      "name": "query_current_state",
+      "params": [],
+      "returns": [
+        {
+          "type": "object",
+          "properties": {
+            "submittedTxs": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            },
+            "pendingTxs": {
+              "type": "object",
+              "additionalProperties": {
+                "type": "array",
+                "items": {
+                  "type": "string"
+                }
+              }
+            }
+          }
+        }
+      ]
     }
   ],
   "events": [
