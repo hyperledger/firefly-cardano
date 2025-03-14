@@ -23,7 +23,7 @@ services:
     healthcheck:
       test: "ls /ipc/node.socket"
       interval: 3s
-      retries: 30
+      retries: 600
     depends_on:
       init-node:
         condition: service_completed_successfully
