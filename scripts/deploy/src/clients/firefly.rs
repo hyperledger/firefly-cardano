@@ -58,12 +58,12 @@ impl FireflyClient {
         Ok(())
     }
 
-    pub async fn deploy_api(&self, req: &CreateApiRequest) -> Result<String> {
+    pub async fn deploy_api(&self, req: &CreateApiRequest) -> Result<Urls> {
         let res = match self.try_get_api(&req.name).await? {
             Some(api) => self.update_api(req, &api.id).await?,
             None => self.create_api(req).await?,
         };
-        Ok(res.urls.ui)
+        Ok(res.urls)
     }
 
     async fn try_get_api(&self, name: &str) -> Result<Option<ApiResponse>> {
@@ -182,6 +182,7 @@ struct ApiResponse {
 }
 
 #[derive(Deserialize)]
-struct Urls {
-    ui: String,
+pub struct Urls {
+    pub ui: String,
+    pub api: String,
 }
