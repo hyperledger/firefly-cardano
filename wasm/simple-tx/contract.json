@@ -38,21 +38,22 @@
       "params": [],
       "returns": [
         {
-          "type": "object",
-          "properties": {
-            "submittedTxs": {
+          "name": "submittedTxs",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }  
+          }
+        },
+        {
+          "name": "pendingTxs",
+          "schema": {
+            "type": "object",
+            "additionalProperties": {
               "type": "array",
               "items": {
                 "type": "string"
-              }
-            },
-            "pendingTxs": {
-              "type": "object",
-              "additionalProperties": {
-                "type": "array",
-                "items": {
-                  "type": "string"
-                }
               }
             }
           }

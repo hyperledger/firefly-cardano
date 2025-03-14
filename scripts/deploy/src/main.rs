@@ -34,7 +34,7 @@ async fn main() -> Result<()> {
     let location = client.deploy_contract(&request).await?;
     let interface = client.deploy_interface(&request.definition).await?;
     let url = client
-        .create_api(&CreateApiRequest {
+        .deploy_api(&CreateApiRequest {
             name: request.definition.name,
             location,
             interface,
