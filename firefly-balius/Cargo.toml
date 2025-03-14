@@ -1,6 +1,6 @@
 [package]
 name = "firefly-balius"
-version = "0.3.0"
+version = "0.3.1"
 description = "Helpers to write contracts for the FireFly Cardano connector"
 license-file.workspace = true
 publish = false
