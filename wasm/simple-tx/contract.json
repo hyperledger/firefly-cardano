@@ -63,7 +63,19 @@
   ],
   "events": [
     {
-      "name": "TransactionSubmitted",
+      "name": "TransactionAccepted",
+      "description": "",
+      "params": [
+        {
+          "name": "transactionId",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    {
+      "name": "TransactionRolledBack",
       "description": "",
       "params": [
         {
