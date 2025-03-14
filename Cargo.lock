@@ -353,8 +353,9 @@ dependencies = [
 
 [[package]]
 name = "balius-macros"
-version = "0.2.0"
-source = "git+https://github.com/txpipe/balius.git?rev=2a66c8c#2a66c8c329cc140cb33c3a0d3acc90a8eb0c4ab1"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "995fceb18dd8036c17f8d616133f5f2cf93c17dd5123f7dd07dcbebf2ea86acb"
 dependencies = [
  "quote",
  "syn",
@@ -362,8 +363,9 @@ dependencies = [
 
 [[package]]
 name = "balius-runtime"
-version = "0.2.0"
-source = "git+https://github.com/txpipe/balius.git?rev=2a66c8c#2a66c8c329cc140cb33c3a0d3acc90a8eb0c4ab1"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9f375c0885c1e08c2fe1de561e47a2d43ba0968b73ceceab7f0855e57a2bc77f"
 dependencies = [
  "async-trait",
  "flate2",
@@ -386,8 +388,9 @@ dependencies = [
 
 [[package]]
 name = "balius-sdk"
-version = "0.2.0"
-source = "git+https://github.com/txpipe/balius.git?rev=2a66c8c#2a66c8c329cc140cb33c3a0d3acc90a8eb0c4ab1"
+version = "0.3.4"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "258e9d00f2a7b551cf930812a865a0d3e1e87b508c96a121296c7d2774b0ba88"
 dependencies = [
  "balius-macros",
  "hex",

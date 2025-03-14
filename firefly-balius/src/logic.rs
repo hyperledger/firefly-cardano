@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use balius_sdk::txbuilder::{
-    primitives::TransactionInput, BuildContext, BuildError, InputExpr, UtxoSource, Value, ValueExpr
+    primitives::TransactionInput, BuildContext, BuildError, InputExpr, UtxoSource, Value, ValueExpr,
 };
 
 /// When used in a transaction, adds a minimal set of UTXOs with at least the given value (plus fees).
@@ -13,19 +13,28 @@ impl<V: ValueExpr> InputExpr for CoinSelectionInput<V> {
     fn eval(&self, ctx: &BuildContext) -> Result<Vec<TransactionInput>, BuildError> {
         let utxos = self.0.resolve(ctx)?;
         let target_amount = self.1.eval(ctx)?;
-        
+
         // If we know the fee, add it to the target amount.
         // If not, overestimate the fee so we pick at least as many TXOs as needed.
         let fee = if ctx.estimated_fee == 0 {
-                2_000_000
-            } else {
-                ctx.estimated_fee
-            };
+            2_000_000
+        } else {
+            ctx.estimated_fee
+        };
         let (target_lovelace, mut target_assets) = match target_amount {
             Value::Coin(c) => (c + fee, HashMap::new()),
             Value::Multiasset(c, assets) => {
-                let asset_map = assets.into_iter()
-                    .map(|(policy_id, assets)| (policy_id, assets.into_iter().map(|(name, coin)| (name.to_vec(), u64::from(coin))).collect::<HashMap<_, _>>()))
+                let asset_map = assets
+                    .into_iter()
+                    .map(|(policy_id, assets)| {
+                        (
+                            policy_id,
+                            assets
+                                .into_iter()
+                                .map(|(name, coin)| (name.to_vec(), u64::from(coin)))
+                                .collect::<HashMap<_, _>>(),
+                        )
+                    })
                     .collect();
                 (c + fee, asset_map)
             }
@@ -39,7 +48,8 @@ impl<V: ValueExpr> InputExpr for CoinSelectionInput<V> {
             let coin = txo.value().coin();
             let mut useful = coin != 0 && lovelace_so_far < target_lovelace;
             for policy_assets in txo.value().assets() {
-                let Some(target_policy_assets) = target_assets.get_mut(policy_assets.policy()) else {
+                let Some(target_policy_assets) = target_assets.get_mut(policy_assets.policy())
+                else {
                     continue;
                 };
                 for asset in policy_assets.assets() {

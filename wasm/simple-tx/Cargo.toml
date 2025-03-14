@@ -7,8 +7,7 @@ repository = "https://github.com/hyperledger/firefly-cardano"
 [dependencies]
 firefly-balius = { path = "../../firefly-balius" }
 hex = "0.4"
-pallas-addresses = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-traverse = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-addresses = "0.32"
 serde = { version = "1", features = ["derive"] }
 
 [lib]
