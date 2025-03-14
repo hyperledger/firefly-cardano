@@ -133,7 +133,7 @@ pub struct DeployContractRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ContractDefinition {
     pub name: String,
-    version: String,
+    pub version: String,
     methods: Vec<serde_json::Value>,
     events: Vec<serde_json::Value>,
 }

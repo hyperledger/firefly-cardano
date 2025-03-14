@@ -33,8 +33,8 @@ impl ContractRuntime {
         ledger: Option<Ledger>,
     ) -> Self {
         let runtime_config = config.map(|c| ContractRuntimeWorkerConfig {
-            store_path: c.stores_path.join(contract).with_extension("redb"),
-            wasm_path: c.components_path.join(contract).with_extension("wasm"),
+            store_path: c.stores_path.join(format!("{contract}.redb")),
+            wasm_path: c.components_path.join(format!("{contract}.wasm")),
             cache_size: c.cache_size,
         });
         let kv = if let Some(config) = config {

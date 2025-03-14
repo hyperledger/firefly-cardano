@@ -46,6 +46,7 @@ pub struct DeployRequest {
 #[derive(Deserialize, JsonSchema)]
 pub struct ABIContract {
     pub name: String,
+    pub version: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -100,9 +101,9 @@ pub async fn deploy_contract(
     Json(req): Json<DeployRequest>,
 ) -> ApiResult<NoContent> {
     let id = req.id.into();
-    let name = &req.definition.name;
+    let address = format!("{}@{}", req.definition.name, req.definition.version);
     let contract = hex::decode(req.contract)?;
-    match operations.deploy(id, name, &contract).await {
+    match operations.deploy(id, &address, &contract).await {
         Ok(()) => Ok(NoContent),
         Err(error) => Err(error.with_field("submissionRejected", true)),
     }

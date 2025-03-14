@@ -38,15 +38,15 @@ impl OperationsManager {
         }
     }
 
-    pub async fn deploy(&self, id: OperationId, name: &str, contract: &[u8]) -> ApiResult<()> {
+    pub async fn deploy(&self, id: OperationId, address: &str, contract: &[u8]) -> ApiResult<()> {
         let mut op = Operation {
             id,
             status: OperationStatus::Pending,
             tx_id: None,
-            contract_address: Some(name.to_string()),
+            contract_address: Some(address.to_string()),
         };
         self.update_operation(&op).await?;
-        match self.contracts.deploy(name, contract).await {
+        match self.contracts.deploy(address, contract).await {
             Ok(()) => {
                 op.status = OperationStatus::Succeeded;
                 self.update_operation(&op).await?;

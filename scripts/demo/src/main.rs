@@ -67,6 +67,8 @@ async fn create_listener(
         .await
 }
 
+const CONTRACT_ADDRESS: &str = "simple-tx@0.1.0";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -81,7 +83,7 @@ async fn main() -> Result<()> {
     let Some(txid) = firefly
         .invoke_contract(
             &args.addr_from,
-            "simple-tx",
+            CONTRACT_ADDRESS,
             "send_ada",
             [
                 ("fromAddress", args.addr_from.clone().into()),
@@ -117,15 +119,15 @@ async fn main() -> Result<()> {
         vec![
             // The contract emits specific events at different parts of the transaction lifecycle
             ListenerFilter::Event {
-                contract: "simple-tx".into(),
+                contract: CONTRACT_ADDRESS.into(),
                 event_path: "TransactionAccepted(string)".into(),
             },
             ListenerFilter::Event {
-                contract: "simple-tx".into(),
+                contract: CONTRACT_ADDRESS.into(),
                 event_path: "TransactionRolledBack(string)".into(),
             },
             ListenerFilter::Event {
-                contract: "simple-tx".into(),
+                contract: CONTRACT_ADDRESS.into(),
                 event_path: "TransactionFinalized(string)".into(),
             },
         ],
