@@ -180,11 +180,7 @@ impl ContractListener {
                         }
                     };
                     for event in contract_events {
-                        if contract
-                            .filters
-                            .iter()
-                            .any(|f| event.signature.starts_with(f))
-                        {
+                        if contract.filters.contains(&event.signature) {
                             events.push(event);
                         }
                     }

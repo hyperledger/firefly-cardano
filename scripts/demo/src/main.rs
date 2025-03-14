@@ -108,19 +108,25 @@ async fn main() -> Result<()> {
 
     // A "listener" represents a logical process consuming events from this stream.
     // Listeners use filters to listen for specific events.
-    // Here we create one listener just for our new transaction.
+    // Here we create a listener for each event we care about
     let tx_listener_id = create_listener(
         &firefly,
         &stream_id,
         &format!("listener-{txid}"),
         &from_block,
         vec![
-            // The cardano connector emits generic lifecycle events for transactions
-            ListenerFilter::TransactionId(txid.clone()),
-            // And the contract emits a custom event when the transaction has been "finalized"
+            // The contract emits specific events at different parts of the transaction lifecycle
             ListenerFilter::Event {
                 contract: "simple-tx".into(),
-                event_path: "TransactionFinalized".into(),
+                event_path: "TransactionAccepted(string)".into(),
+            },
+            ListenerFilter::Event {
+                contract: "simple-tx".into(),
+                event_path: "TransactionRolledBack(string)".into(),
+            },
+            ListenerFilter::Event {
+                contract: "simple-tx".into(),
+                event_path: "TransactionFinalized(string)".into(),
             },
         ],
     )
