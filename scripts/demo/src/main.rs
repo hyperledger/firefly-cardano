@@ -105,7 +105,7 @@ async fn main() -> Result<()> {
     clear_listeners(&firefly, &stream_id).await?;
 
     // from_block tells the stream which block to start listening from.
-    // It can be "earliest", "latest", or a kupo-style "slot.hash" string.
+    // It can be "oldest", "newest", or a kupo-style "slot.hash" string.
     let from_block = format!("{}.{}", tip.block_slot, tip.block_hash);
 
     // A "listener" represents a logical process consuming events from this stream.
