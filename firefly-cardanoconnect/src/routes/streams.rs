@@ -26,7 +26,7 @@ fn example_opt_batch_timeout_ms() -> Option<u64> {
 }
 
 fn example_from_block() -> Option<String> {
-    Some("earliest".into())
+    Some("newest".into())
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -240,8 +240,8 @@ pub async fn list_listeners(
 
 fn parse_block_reference(value: &str) -> ApiResult<Option<BlockReference>> {
     match value {
-        "earliest" => Ok(Some(BlockReference::Origin)),
-        "latest" => Ok(None),
+        "oldest" => Ok(Some(BlockReference::Origin)),
+        "newest" => Ok(None),
         other => {
             let Some((slot_number, slot_hash)) = other.split_once(".") else {
                 return Err(ApiError::bad_request("invalid block reference"));

@@ -1,4 +1,7 @@
-use std::{path::PathBuf, process::Command};
+use std::{
+    path::PathBuf,
+    process::{Command, Output},
+};
 
 use anyhow::{bail, Result};
 use clap::Parser;
@@ -21,14 +24,22 @@ struct Args {
 async fn main() -> Result<()> {
     let args = Args::parse();
 
-    let Some(name) = args.contract_path.file_name() else {
-        bail!("couldn't find contract name");
-    };
-    let Some(name) = name.to_str() else {
-        bail!("invalid contract name");
-    };
-
-    println!("Compiling {name}...");
+    let (name, version) = Command::new("cargo")
+        .arg("pkgid")
+        .current_dir(&args.contract_path)
+        .exec()
+        .and_then(|output| {
+            let mut str = String::from_utf8(output.stdout)?;
+            let end = str.split_off(str.rfind(['/', '\\']).unwrap() + 1);
+            let (folder_name, rest) = end.split_once('#').unwrap();
+            if let Some((name, version)) = rest.split_once('@') {
+                Ok((name.to_string(), version.trim().to_string()))
+            } else {
+                Ok((folder_name.to_string(), rest.trim().to_string()))
+            }
+        })?;
+    let address = format!("{name}@{version}");
+    println!("Compiling {address}...");
 
     Command::new("cargo")
         .arg("build")
@@ -46,7 +57,7 @@ async fn main() -> Result<()> {
         .join("release")
         .join(filename);
 
-    println!("Bundling {name} as WASM component...");
+    println!("Bundling {address} as WASM component...");
     let module = wat::Parser::new().parse_file(path)?;
     let component = ComponentEncoder::default()
         .validate(true)
@@ -54,30 +65,30 @@ async fn main() -> Result<()> {
         .encode()?;
     let contract = hex::encode(&component);
 
-    println!("Deploying {name} to FireFly...");
+    println!("Deploying {address} to FireFly...");
     let base_url = args
         .firefly_url
         .map(|u| format!("{u}/api/v1"))
         .unwrap_or(args.firefly_cardano_url);
     let firefly = FireflyCardanoClient::new(&base_url);
-    firefly.deploy_contract(name, &contract).await?;
+    firefly.deploy_contract(&name, &version, &contract).await?;
 
     Ok(())
 }
 
 trait CommandExt {
-    fn exec(&mut self) -> Result<()>;
+    fn exec(&mut self) -> Result<Output>;
 }
 
 impl CommandExt for Command {
-    fn exec(&mut self) -> Result<()> {
+    fn exec(&mut self) -> Result<Output> {
         let output = self.output()?;
         if !output.stderr.is_empty() {
-            eprintln!("{}", String::from_utf8(output.stderr)?);
+            eprintln!("{}", std::str::from_utf8(&output.stderr)?);
         }
         if !output.status.success() {
             bail!("command failed: {}", output.status);
         }
-        Ok(())
+        Ok(output)
     }
 }

@@ -32,15 +32,18 @@ async fn main() -> Result<()> {
     };
 
     let location = client.deploy_contract(&request).await?;
+    println!("location: {}", serde_json::to_string(&location)?);
     let interface = client.deploy_interface(&request.definition).await?;
-    let url = client
-        .create_api(&CreateApiRequest {
-            name: request.definition.name,
+    println!("interface: {}", serde_json::to_string(&interface)?);
+    let urls = client
+        .deploy_api(&CreateApiRequest {
+            name: format!("{}-{}", request.definition.name, request.definition.version),
             location,
             interface,
         })
         .await?;
-    println!("New API available at {url}");
+    println!("API available at {}", urls.api);
+    println!("Swagger UI at {}", urls.ui);
 
     Ok(())
 }

@@ -16,13 +16,14 @@ impl FireflyCardanoClient {
         }
     }
 
-    pub async fn deploy_contract(&self, name: &str, contract: &str) -> Result<()> {
+    pub async fn deploy_contract(&self, name: &str, version: &str, contract: &str) -> Result<()> {
         let url = format!("{}/contracts/deploy", self.base_url);
         let req = DeployContractRequest {
             id: Uuid::new_v4().to_string(),
             contract: contract.to_string(),
             definition: ABIContract {
                 name: name.to_string(),
+                version: version.to_string(),
             },
         };
         let res = self.client.post(url).json(&req).send().await?;
@@ -50,4 +51,5 @@ struct DeployContractRequest {
 #[derive(Serialize)]
 struct ABIContract {
     pub name: String,
+    pub version: String,
 }

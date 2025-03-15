@@ -33,8 +33,8 @@ impl ContractRuntime {
         ledger: Option<Ledger>,
     ) -> Self {
         let runtime_config = config.map(|c| ContractRuntimeWorkerConfig {
-            store_path: c.stores_path.join(contract).with_extension("redb"),
-            wasm_path: c.components_path.join(contract).with_extension("wasm"),
+            store_path: c.stores_path.join(format!("{contract}.redb")),
+            wasm_path: c.components_path.join(format!("{contract}.wasm")),
             cache_size: c.cache_size,
         });
         let kv = if let Some(config) = config {
@@ -303,9 +303,17 @@ impl ContractRuntimeWorker {
 
         for rolled_back_block in rollbacks {
             for hash in &rolled_back_block.transaction_hashes {
-                // If a TX which we're watching has been rolled back, don't emit a finalized event for it
-                // (unless it gets reapplied in another block)
                 if monitored_txs.contains_key(hash) {
+                    // A TX which we're watching has been rolled back
+                    new_events.push(RawEvent {
+                        tx_hash: hex::decode(hash).unwrap(),
+                        signature: "TransactionRolledBack(string)".into(),
+                        data: json!({
+                            "transactionId": hash,
+                        }),
+                    });
+
+                    // Don't emit a finalized event for it (unless it gets reapplied in another block)
                     tx_finalization_heights.retain(|_, hashes| {
                         if hashes.remove(hash) {
                             updated_tx_finalization_heights = true;
@@ -318,9 +326,16 @@ impl ContractRuntimeWorker {
 
         for hash in &block.transaction_hashes {
             if let Some(condition) = monitored_txs.get(hash) {
-                // A transaction we were monitoring has been submitted.
-                // Now we know when it can be finalized.
+                // A transaction we were monitoring has been accepted.
+                new_events.push(RawEvent {
+                    tx_hash: hex::decode(hash).unwrap(),
+                    signature: "TransactionAccepted(string)".into(),
+                    data: json!({
+                        "transactionId": hash,
+                    }),
+                });
 
+                // Now we know when it can be finalized.
                 let FinalizationCondition::AfterBlocks(blocks_to_wait) = condition;
                 let finalized_at_height = block_height + blocks_to_wait;
                 tx_finalization_heights

@@ -172,9 +172,9 @@ impl ChainEventStream {
             let mut log_idx = 0;
             if self.matches_tx_filter(tx_hash) {
                 let tx_event_signature = if rollback {
-                    "TransactionRolledBack(string, string, string)"
+                    "TransactionRolledBack(string)"
                 } else {
-                    "TransactionAccepted(string, string, string)"
+                    "TransactionAccepted(string)"
                 };
 
                 let id = EventId {
@@ -190,7 +190,9 @@ impl ChainEventStream {
                 };
                 let event = ContractEvent {
                     id,
-                    data: json!({}),
+                    data: json!({
+                        "transactionId": tx_hash
+                    }),
                 };
                 let event_ref = EventReference {
                     block: block_ref.clone(),

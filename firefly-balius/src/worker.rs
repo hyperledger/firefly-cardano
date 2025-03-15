@@ -1,16 +1,18 @@
 use std::marker::PhantomData;
 
-pub use balius_sdk;
 use balius_sdk::{wit, Ack, Params, Worker, WorkerResult, _internal::Handler};
 use serde::Deserialize;
 
+/// Parameters to the [WorkerExt::with_tx_submitted_handler] callback.
 #[derive(Deserialize)]
 pub struct SubmittedTx {
+    /// The method which submitted this TX.
     pub method: String,
+    /// The hash of the submitted transaction.
     pub hash: String,
 }
 
-pub struct SubmittedTxHandler<F, C>
+struct SubmittedTxHandler<F, C>
 where
     F: Fn(C, SubmittedTx) -> WorkerResult<Ack> + 'static,
     C: TryFrom<wit::Config>,
@@ -49,12 +51,16 @@ where
     }
 }
 
+/// Helper methods on the Balius Worker.
 pub trait WorkerExt {
+    /// Register a callback to run when a transaction has been submitted.
+    /// The callback will be passed a [SubmittedTx] describing the transaction.
     fn with_tx_submitted_handler<C, F>(self, func: F) -> Self
     where
         C: TryFrom<wit::Config, Error = balius_sdk::Error> + Send + Sync + 'static,
         F: Fn(C, SubmittedTx) -> WorkerResult<Ack> + Send + Sync + 'static;
 
+    /// Register a callback to run whenever a new UTXO appears on-chain.
     fn with_new_txo_handler(self, handler: impl Handler) -> Self;
 }
 

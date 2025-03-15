@@ -251,7 +251,6 @@ pub enum ListenerType {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ListenerFilter {
-    TransactionId(String),
     #[serde(rename_all = "camelCase")]
     Event {
         contract: String,

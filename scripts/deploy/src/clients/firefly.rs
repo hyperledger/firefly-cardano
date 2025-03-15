@@ -26,6 +26,24 @@ impl FireflyClient {
     }
 
     pub async fn deploy_interface(&self, req: &ContractDefinition) -> Result<Interface> {
+        if let Some(interface) = self.try_get_interface(&req.name, &req.version).await? {
+            self.delete_interface(&interface.id).await?;
+        }
+        self.create_interface(req).await
+    }
+
+    async fn try_get_interface(&self, name: &str, version: &str) -> Result<Option<Interface>> {
+        let url = format!("{}/contracts/interfaces/{name}/{version}", self.base_url);
+        let res = self.client.get(url).send().await?;
+        if res.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        let res = Self::extract_error(res).await?;
+        let body: Interface = res.json().await?;
+        Ok(Some(body))
+    }
+
+    async fn create_interface(&self, req: &ContractDefinition) -> Result<Interface> {
         let url = format!("{}/contracts/interfaces", self.base_url);
         let res = self.client.post(url).json(req).send().await?;
         let res = Self::extract_error(res).await?;
@@ -33,12 +51,46 @@ impl FireflyClient {
         Ok(body)
     }
 
-    pub async fn create_api(&self, req: &CreateApiRequest) -> Result<String> {
+    async fn delete_interface(&self, id: &str) -> Result<()> {
+        let url = format!("{}/contracts/interfaces/{id}", self.base_url);
+        let res = self.client.delete(url).send().await?;
+        Self::extract_error(res).await?;
+        Ok(())
+    }
+
+    pub async fn deploy_api(&self, req: &CreateApiRequest) -> Result<Urls> {
+        let res = match self.try_get_api(&req.name).await? {
+            Some(api) => self.update_api(req, &api.id).await?,
+            None => self.create_api(req).await?,
+        };
+        Ok(res.urls)
+    }
+
+    async fn try_get_api(&self, name: &str) -> Result<Option<ApiResponse>> {
+        let url = format!("{}/apis/{name}", self.base_url);
+        let res = self.client.get(url).send().await?;
+        if res.status().as_u16() == 404 {
+            return Ok(None);
+        }
+        let res = Self::extract_error(res).await?;
+        let body: ApiResponse = res.json().await?;
+        Ok(Some(body))
+    }
+
+    async fn create_api(&self, req: &CreateApiRequest) -> Result<ApiResponse> {
         let url = format!("{}/apis", self.base_url);
         let res = self.client.post(url).json(req).send().await?;
         let res = Self::extract_error(res).await?;
-        let body: CreateApiResponse = res.json().await?;
-        Ok(body.urls.ui)
+        let body: ApiResponse = res.json().await?;
+        Ok(body)
+    }
+
+    async fn update_api(&self, req: &CreateApiRequest, id: &str) -> Result<ApiResponse> {
+        let url = format!("{}/apis/{id}", self.base_url);
+        let res = self.client.put(url).json(req).send().await?;
+        let res = Self::extract_error(res).await?;
+        let body: ApiResponse = res.json().await?;
+        Ok(body)
     }
 
     async fn poll_deploy_contract_location(&self, operation: &str) -> Result<ContractLocation> {
@@ -81,7 +133,7 @@ pub struct DeployContractRequest {
 #[serde(rename_all = "camelCase")]
 pub struct ContractDefinition {
     pub name: String,
-    version: String,
+    pub version: String,
     methods: Vec<serde_json::Value>,
     events: Vec<serde_json::Value>,
 }
@@ -124,11 +176,13 @@ pub struct CreateApiRequest {
 }
 
 #[derive(Deserialize)]
-struct CreateApiResponse {
+struct ApiResponse {
+    id: String,
     urls: Urls,
 }
 
 #[derive(Deserialize)]
-struct Urls {
-    ui: String,
+pub struct Urls {
+    pub ui: String,
+    pub api: String,
 }
