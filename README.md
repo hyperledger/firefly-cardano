@@ -15,7 +15,7 @@ For the firefly signer config, see [config.md](firefly-cardanosigner/config.md).
 
 ## Getting started
 
-To setup the components, you need a valid Blockfrost key, you can either [get it from the online service](https://blockfrost.io/) or [your can run your own cluster](https://github.com/blockfrost/blockfrost-backend-ryo).
+To setup the components, you need a valid Blockfrost key, you can either [get it from the online service](https://blockfrost.io/) or [you can run your own cluster](https://github.com/blockfrost/blockfrost-backend-ryo).
 
 ### Run it with Docker compose
 
