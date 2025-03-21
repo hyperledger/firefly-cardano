@@ -5,10 +5,11 @@ use balius_sdk::{
         AddressPattern, BuildError, FeeChangeReturn, OutputBuilder, TxBuilder, UtxoPattern,
         UtxoSource,
     },
-    Ack, Config, FnHandler, NewTx, Params, Worker, WorkerResult,
+    Ack, Config, FnHandler, Params, Worker, WorkerResult,
 };
 use firefly_balius::{
-    balius_sdk::{self, Json}, kv, CoinSelectionInput, FinalityMonitor, FinalizationCondition, SubmittedTx, WorkerExt as _
+    balius_sdk::{self, Json},
+    kv, CoinSelectionInput, FinalizationCondition, NewMonitoredTx, SubmittedTx, WorkerExt as _,
 };
 use pallas_addresses::Address;
 use serde::{Deserialize, Serialize};
@@ -30,7 +31,7 @@ struct CurrentState {
 }
 
 /// This function builds a transaction to send ADA from one address to another.
-fn send_ada(_: Config<()>, req: Params<SendAdaRequest>) -> WorkerResult<NewTx> {
+fn send_ada(_: Config<()>, req: Params<SendAdaRequest>) -> WorkerResult<NewMonitoredTx> {
     let from_address =
         Address::from_bech32(&req.from_address).map_err(|_| BuildError::MalformedAddress)?;
 
@@ -62,17 +63,18 @@ fn send_ada(_: Config<()>, req: Params<SendAdaRequest>) -> WorkerResult<NewTx> {
         )
         .with_output(FeeChangeReturn(address_source));
 
-    // Return that TX. The framework will sign and submit it.
-    Ok(NewTx(Box::new(tx)))
+    // Return that TX. The framework will sign, submit, and monitor it.
+    // By returning a `NewMonitoredTx`, we tell the framework that we want it to monitor this transaction.
+    // This enables the TransactionApproved, TransactionRolledBack, and TransactionFinalized events from before.
+    // Note that we decide the transaction has been finalized after 4 blocks have reached the chain.
+    Ok(NewMonitoredTx(
+        Box::new(tx),
+        FinalizationCondition::AfterBlocks(4),
+    ))
 }
 
 /// This function is called when a TX produced by this contract is submitted to the blockchain, but before it has reached a block.
 fn handle_submit(_: Config<()>, tx: SubmittedTx) -> WorkerResult<Ack> {
-    // Tell the framework that we want it to monitor this transaction.
-    // This enables the TransactionApproved, TransactionRolledBack, and TransactionFinalized events from before.
-    // Note that we decide the transaction has been finalized after 4 blocks have reached the chain.
-    FinalityMonitor.monitor_tx(&tx.hash, FinalizationCondition::AfterBlocks(4))?;
-
     // Keep track of which TXs have been submitted.
     let mut state: CurrentState = kv::get("current_state")?.unwrap_or_default();
     state.submitted_txs.insert(tx.hash);

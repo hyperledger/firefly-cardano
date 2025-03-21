@@ -85,9 +85,9 @@ impl OperationsManager {
             }
         };
         if let Some(tx) = value {
-            let tx_id = self.submit_transaction(from, tx).await?;
+            let tx_id = self.submit_transaction(from, &tx.bytes).await?;
             op.tx_id = Some(tx_id.clone());
-            self.contracts.handle_submit(contract, method, &tx_id).await;
+            self.contracts.handle_submit(contract, &tx_id, tx).await?;
         }
 
         op.status = OperationStatus::Succeeded;
@@ -114,8 +114,8 @@ impl OperationsManager {
         Ok(())
     }
 
-    async fn submit_transaction(&self, address: &str, tx: Vec<u8>) -> ApiResult<String> {
-        let mut transaction: Tx = minicbor::decode(&tx)?;
+    async fn submit_transaction(&self, address: &str, tx: &[u8]) -> ApiResult<String> {
+        let mut transaction: Tx = minicbor::decode(tx)?;
         self.signer
             .sign(address.to_string(), &mut transaction)
             .await?;

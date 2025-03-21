@@ -76,13 +76,29 @@ impl ContractRuntime {
         rx.await?
     }
 
-    pub async fn invoke(&self, method: &str, params: Value) -> Result<Response> {
+    pub async fn invoke(&self, method: &str, params: Value) -> Result<InvokeResponse> {
         let (tx, rx) = oneshot::channel();
         if self
             .tx
             .send(ContractRuntimeCommand::Invoke {
                 method: method.to_string(),
                 params,
+                done: tx,
+            })
+            .is_err()
+        {
+            bail!("runtime for contract {} has stopped", self.contract);
+        }
+        rx.await?
+    }
+
+    pub async fn handle_submit(&self, tx_id: &str, new_tx: NewTx) -> Result<()> {
+        let (tx, rx) = oneshot::channel();
+        if self
+            .tx
+            .send(ContractRuntimeCommand::HandleSubmit {
+                tx_id: tx_id.to_string(),
+                new_tx,
                 done: tx,
             })
             .is_err()
@@ -139,7 +155,12 @@ enum ContractRuntimeCommand {
     Invoke {
         method: String,
         params: Value,
-        done: oneshot::Sender<Result<Response>>,
+        done: oneshot::Sender<Result<InvokeResponse>>,
+    },
+    HandleSubmit {
+        tx_id: String,
+        new_tx: NewTx,
+        done: oneshot::Sender<Result<()>>,
     },
     Apply {
         rollbacks: Vec<BlockInfo>,
@@ -194,6 +215,13 @@ impl ContractRuntimeWorker {
                 } => {
                     let _ = done.send(self.invoke(&method, params).await);
                 }
+                ContractRuntimeCommand::HandleSubmit {
+                    tx_id,
+                    new_tx,
+                    done,
+                } => {
+                    let _ = done.send(self.handle_submit(&tx_id, new_tx).await);
+                }
                 ContractRuntimeCommand::Apply {
                     rollbacks,
                     block,
@@ -241,14 +269,53 @@ impl ContractRuntimeWorker {
         Ok(())
     }
 
-    async fn invoke(&mut self, method: &str, params: Value) -> Result<Response> {
+    async fn invoke(&mut self, method: &str, params: Value) -> Result<InvokeResponse> {
         let params = serde_json::to_vec(&params)?;
         let Some(runtime) = self.runtime.as_mut() else {
             bail!("Contract {} failed to initialize", self.contract);
         };
-        Ok(runtime
+        let response = runtime
             .handle_request(&self.contract, method, params)
-            .await?)
+            .await?;
+        match response {
+            Response::Acknowledge => Ok(InvokeResponse::Json(json!({}))),
+            Response::Cbor(bytes) => Ok(InvokeResponse::Json(json!({ "cbor": bytes }))),
+            Response::PartialTx(bytes) => Ok(InvokeResponse::NewTx(NewTx {
+                bytes,
+                method: method.to_string(),
+                condition: None,
+            })),
+            Response::Json(bytes) => {
+                let value: Value = serde_json::from_slice(&bytes)?;
+                if let Ok(RawNewTx::FireFlyCardanoNewTx { bytes, condition }) =
+                    serde_json::from_value(value.clone())
+                {
+                    Ok(InvokeResponse::NewTx(NewTx {
+                        bytes: hex::decode(bytes)?,
+                        method: method.to_string(),
+                        condition: Some(condition),
+                    }))
+                } else {
+                    Ok(InvokeResponse::Json(value))
+                }
+            }
+        }
+    }
+
+    async fn handle_submit(&mut self, tx_id: &str, new_tx: NewTx) -> Result<()> {
+        if let Some(condition) = new_tx.condition {
+            let mut monitored_txs: HashMap<String, FinalizationCondition> =
+                self.get_value("__monitored_txs").await?.unwrap_or_default();
+            monitored_txs.insert(tx_id.to_string(), condition);
+            self.set_value("__monitored_txs", monitored_txs).await?;
+        }
+
+        let params = json!({
+            "method": new_tx.method,
+            "hash": tx_id,
+        });
+        let _: Result<_, _> = self.invoke("__tx_submitted", params).await;
+        Ok(())
     }
 
     async fn apply(&mut self, rollbacks: &[BlockInfo], block: &BlockInfo) -> Result<()> {
@@ -419,6 +486,22 @@ pub struct ContractEvent {
     pub data: serde_json::Value,
 }
 
+pub enum InvokeResponse {
+    Json(Value),
+    NewTx(NewTx),
+}
+
+pub struct NewTx {
+    pub bytes: Vec<u8>,
+    method: String,
+    condition: Option<FinalizationCondition>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+enum FinalizationCondition {
+    AfterBlocks(u64),
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct RawEvent {
     pub tx_hash: Vec<u8>,
@@ -426,7 +509,11 @@ struct RawEvent {
     pub data: serde_json::Value,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
-enum FinalizationCondition {
-    AfterBlocks(u64),
+#[derive(Deserialize)]
+#[serde(tag = "type")]
+enum RawNewTx {
+    FireFlyCardanoNewTx {
+        bytes: String,
+        condition: FinalizationCondition,
+    },
 }

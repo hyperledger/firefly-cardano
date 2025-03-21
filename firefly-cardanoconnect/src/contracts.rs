@@ -4,12 +4,12 @@ use std::{
 };
 
 use anyhow::{bail, Result};
-use balius_runtime::{ledgers::Ledger, Response};
+use balius_runtime::ledgers::Ledger;
 use dashmap::{DashMap, Entry};
-pub use runtime::ContractEvent;
-use runtime::ContractRuntime;
+pub use runtime::{ContractEvent, NewTx};
+use runtime::{ContractRuntime, InvokeResponse};
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::fs;
 use tracing::{error, warn};
 
@@ -81,13 +81,13 @@ impl ContractManager {
         contract: &str,
         method: &str,
         params: Value,
-    ) -> Result<Option<Vec<u8>>> {
+    ) -> Result<Option<NewTx>> {
         let Some(runtime) = self.runtimes.get(contract) else {
             bail!("unrecognized contract {contract}");
         };
         let response = runtime.invoke(method, params).await?;
         match response {
-            Response::PartialTx(bytes) => Ok(Some(bytes)),
+            InvokeResponse::NewTx(tx) => Ok(Some(tx)),
             _ => Ok(None),
         }
     }
@@ -98,20 +98,14 @@ impl ContractManager {
         };
         let response = runtime.invoke(method, params).await?;
         match response {
-            Response::Acknowledge => Ok(json!({})),
-            Response::Cbor(bytes) => Ok(json!({ "cbor": hex::encode(bytes) })),
-            Response::Json(bytes) => Ok(serde_json::from_slice(&bytes)?),
-            Response::PartialTx(_) => bail!("Cannot build transactions from query"),
+            InvokeResponse::Json(value) => Ok(value),
+            InvokeResponse::NewTx(_) => bail!("Cannot build transactions from query"),
         }
     }
 
-    pub async fn handle_submit(&self, contract: &str, method: &str, tx_id: &str) {
-        let params = serde_json::json!({
-            "method": method,
-            "hash": tx_id,
-        });
+    pub async fn handle_submit(&self, contract: &str, tx_id: &str, tx: NewTx) -> Result<()> {
         let runtime = self.get_contract_runtime(contract).await;
-        let _: Result<_, _> = runtime.invoke("__tx_submitted", params.clone()).await;
+        runtime.handle_submit(tx_id, tx).await
     }
 
     pub async fn listen(&self, listener: &Listener) -> ContractListener {
