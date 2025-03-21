@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use balius_sdk::WorkerResult;
+use balius_sdk::{wit, Json, WorkerResult};
 use serde::{Deserialize, Serialize};
 
 use crate::kv;
@@ -26,4 +26,35 @@ impl FinalityMonitor {
 pub enum FinalizationCondition {
     // Treat the transaction as finalized after the given number of blocks have reached the chain.
     AfterBlocks(u64),
+}
+
+/// A new transaction which FireFly will build, submit, and monitor for you.
+pub struct NewMonitoredTx(
+    pub Box<dyn balius_sdk::txbuilder::TxExpr>,
+    pub FinalizationCondition,
+);
+
+impl TryInto<wit::Response> for NewMonitoredTx {
+    type Error = balius_sdk::Error;
+
+    fn try_into(self) -> Result<wit::Response, Self::Error> {
+        let balius_sdk::wit::Response::PartialTx(tx) = balius_sdk::NewTx(self.0).try_into()? else {
+            return Err(balius_sdk::Error::Internal("Unexpected response".into()));
+        };
+
+        let new_tx = SerializedNewTx::FireFlyCardanoNewTx {
+            bytes: hex::encode(tx),
+            condition: self.1,
+        };
+        Json(new_tx).try_into()
+    }
+}
+
+#[derive(Serialize)]
+#[serde(tag = "type")]
+enum SerializedNewTx {
+    FireFlyCardanoNewTx {
+        bytes: String,
+        condition: FinalizationCondition,
+    },
 }
