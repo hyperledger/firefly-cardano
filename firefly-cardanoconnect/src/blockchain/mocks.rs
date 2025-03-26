@@ -164,7 +164,7 @@ impl MockChain {
         };
 
         let mut transaction_hashes = vec![];
-        for _ in 0..rng.gen_range(0..10) {
+        for _ in 0..rng.random_range(0..10) {
             transaction_hashes.push(Self::generate_hash(rng));
         }
         let block = BlockInfo {
@@ -180,7 +180,7 @@ impl MockChain {
     }
 
     fn generate_hash(rng: &mut ChaChaRng) -> String {
-        let bytes: [u8; 32] = rng.gen();
+        let bytes: [u8; 32] = rng.random();
         hex::encode(bytes)
     }
 }

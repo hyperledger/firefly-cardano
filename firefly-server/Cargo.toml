@@ -11,8 +11,8 @@ repository = "https://github.com/hyperledger/firefly-cardano"
 aide = { version = "0.14", features = ["axum", "axum-json"] }
 axum = "0.8"
 anyhow = "1"
-convert_case = "0.7"
-duration-str = "0.12"
+convert_case = "0.8"
+duration-str = "0.16"
 figment = { version = "0.10", features = ["yaml", "env"] }
 home = "0.5"
 itertools = "0.14"
