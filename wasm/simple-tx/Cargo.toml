@@ -1,7 +1,7 @@
 [package]
 name = "simple-tx"
 version = "0.1.0"
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]

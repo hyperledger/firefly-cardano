@@ -4,7 +4,7 @@ version = "0.4.1"
 description = "A script to easily generate Cardano addresses"
 license-file.workspace = true
 publish = false
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]

@@ -26,19 +26,22 @@ pub struct BlockfrostChainSync {
 #[async_trait]
 impl ChainSyncClient for BlockfrostChainSync {
     async fn request_next(&mut self) -> Result<RequestNextResponse> {
-        if let Some(block) = self.fetch_next().await? {
-            // roll forward
-            Ok(RequestNextResponse::RollForward(
-                block,
-                parse_reference(&self.tip),
-            ))
-        } else {
-            // roll backward
-            let new_head = self.roll_back().await?;
-            Ok(RequestNextResponse::RollBackward(
-                new_head,
-                parse_reference(&self.tip),
-            ))
+        match self.fetch_next().await? {
+            Some(block) => {
+                // roll forward
+                Ok(RequestNextResponse::RollForward(
+                    block,
+                    parse_reference(&self.tip),
+                ))
+            }
+            _ => {
+                // roll backward
+                let new_head = self.roll_back().await?;
+                Ok(RequestNextResponse::RollBackward(
+                    new_head,
+                    parse_reference(&self.tip),
+                ))
+            }
         }
     }
 

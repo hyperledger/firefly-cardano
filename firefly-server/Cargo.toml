@@ -4,7 +4,7 @@ version = "0.4.1"
 description = "Internal library with shared code for services"
 license-file.workspace = true
 publish = false
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
