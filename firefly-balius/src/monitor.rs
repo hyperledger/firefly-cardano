@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use balius_sdk::{wit, Json, WorkerResult};
+use balius_sdk::{Json, WorkerResult, wit};
 use serde::{Deserialize, Serialize};
 
 use crate::kv;

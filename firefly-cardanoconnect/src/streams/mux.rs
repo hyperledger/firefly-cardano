@@ -1,9 +1,9 @@
 use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use dashmap::{DashMap, Entry};
 use firefly_server::apitypes::ToAnyhow;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::{
     select,
     sync::{mpsc, oneshot, watch},
@@ -19,10 +19,10 @@ use crate::{
 };
 
 use super::{
-    blockchain::{ChainListener, DataSource},
-    events::ChainEventStream,
     BlockReference, ContractEvent, EventReference, Listener, ListenerFilter, ListenerId, Stream,
     StreamCheckpoint, StreamId,
+    blockchain::{ChainListener, DataSource},
+    events::ChainEventStream,
 };
 
 #[derive(Clone)]

@@ -1,13 +1,13 @@
 use std::{path::PathBuf, sync::Arc};
 
 use aide::axum::{
-    routing::{get, post},
     ApiRouter, IntoApiResponse,
+    routing::{get, post},
 };
 use anyhow::Result;
 use axum::Json;
 use clap::Parser;
-use config::{load_config, FireflySignerConfig};
+use config::{FireflySignerConfig, load_config};
 use firefly_server::instrumentation;
 use keys::KeyStore;
 use routes::sign_transaction;

@@ -1,13 +1,13 @@
 use std::time::Duration;
 
 use axum::extract::{Path, Query};
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use firefly_server::apitypes::{ApiError, ApiResult, NoContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 
-use crate::streams::{BlockReference, ListenerFilter, ListenerType, Stream};
 use crate::AppState;
+use crate::streams::{BlockReference, ListenerFilter, ListenerType, Stream};
 
 fn example_batch_size() -> usize {
     50

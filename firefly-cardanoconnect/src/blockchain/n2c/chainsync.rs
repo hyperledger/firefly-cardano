@@ -3,11 +3,11 @@ use async_trait::async_trait;
 use pallas_network::{
     facades::NodeClient,
     miniprotocols::{
-        chainsync::{BlockContent, NextResponse},
         Point,
+        chainsync::{BlockContent, NextResponse},
     },
 };
-use pallas_traverse::{wellknown::GenesisValues, MultiEraBlock, MultiEraHeader};
+use pallas_traverse::{MultiEraBlock, MultiEraHeader, wellknown::GenesisValues};
 
 use crate::{
     blockchain::{ChainSyncClient, RequestNextResponse},

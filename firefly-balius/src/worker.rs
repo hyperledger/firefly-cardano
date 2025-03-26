@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use balius_sdk::{wit, Ack, Params, Worker, WorkerResult, _internal::Handler};
+use balius_sdk::{_internal::Handler, Ack, Params, Worker, WorkerResult, wit};
 use serde::Deserialize;
 
 /// Parameters to the [WorkerExt::with_tx_submitted_handler] callback.

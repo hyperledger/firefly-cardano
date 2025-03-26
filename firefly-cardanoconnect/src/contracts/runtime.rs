@@ -4,20 +4,20 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use balius_runtime::{
+    ChainPoint, Response, Runtime, Store,
     kv::{CustomKv, Kv, KvError},
     ledgers::Ledger,
-    ChainPoint, Response, Runtime, Store,
 };
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
-use serde_json::{json, Value};
-use tokio::sync::{mpsc, oneshot, Mutex};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
+use serde_json::{Value, json};
+use tokio::sync::{Mutex, mpsc, oneshot};
 use tracing::warn;
 
 use crate::streams::{BlockInfo, BlockReference};
 
-use super::{kv::SqliteKv, u5c::convert_block, ContractsConfig};
+use super::{ContractsConfig, kv::SqliteKv, u5c::convert_block};
 
 #[derive(Clone)]
 pub struct ContractRuntime {

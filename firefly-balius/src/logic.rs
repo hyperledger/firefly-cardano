@@ -1,7 +1,7 @@
 use std::collections::HashMap;
 
 use balius_sdk::txbuilder::{
-    primitives::TransactionInput, BuildContext, BuildError, InputExpr, UtxoSource, Value, ValueExpr,
+    BuildContext, BuildError, InputExpr, UtxoSource, Value, ValueExpr, primitives::TransactionInput,
 };
 
 /// When used in a transaction, adds a minimal set of UTXOs with at least the given value (plus fees).

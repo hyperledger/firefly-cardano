@@ -3,7 +3,7 @@ use std::time::Duration;
 use anyhow::Result;
 use duration_str::deserialize_option_duration;
 use reqwest::{Client, IntoUrl};
-use serde::{de::DeserializeOwned, Deserialize, Serialize};
+use serde::{Deserialize, Serialize, de::DeserializeOwned};
 
 use crate::apitypes::{ApiError, ApiResult};
 

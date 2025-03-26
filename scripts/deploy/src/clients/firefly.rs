@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use reqwest::{Client, Response};
 use serde::{Deserialize, Serialize};
 

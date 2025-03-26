@@ -1,6 +1,6 @@
 use std::{path::Path, process::Command};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use wit_component::ComponentEncoder;
 
 pub fn compile(contract_path: &Path) -> Result<String> {

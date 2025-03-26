@@ -1,9 +1,9 @@
 use std::{path::PathBuf, time::Duration};
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use firefly_server::apitypes::{ApiError, ApiResult};
-use rusqlite::{params, types::FromSql, Row, ToSql};
+use rusqlite::{Row, ToSql, params, types::FromSql};
 use serde::Deserialize;
 use tokio_rusqlite::Connection;
 use ulid::Ulid;

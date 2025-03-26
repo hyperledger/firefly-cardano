@@ -1,4 +1,4 @@
-use balius_sdk::{wit::balius::app::kv, WorkerResult};
+use balius_sdk::{WorkerResult, wit::balius::app::kv};
 use serde::{Deserialize, Serialize};
 
 /// Retrieve a value from the KV store. Returns None if the value does not already exist.

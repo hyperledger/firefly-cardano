@@ -1,9 +1,9 @@
-use axum::{extract::State, Json};
+use axum::{Json, extract::State};
 use firefly_server::apitypes::{ApiError, ApiResult};
 use schemars::JsonSchema;
 use serde::Serialize;
 
-use crate::{blockchain::ChainSyncClient, streams::BlockReference, AppState};
+use crate::{AppState, blockchain::ChainSyncClient, streams::BlockReference};
 
 #[derive(Serialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]

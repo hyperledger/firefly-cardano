@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use firefly::{
     FireflyCardanoClient, FireflyWebSocketEvent, FireflyWebSocketEventBatch,
@@ -167,7 +167,10 @@ async fn main() -> Result<()> {
 
             if event.signature.starts_with("TransactionAccepted") && event.transaction_hash == txid
             {
-                println!("our transaction was accepted in block #{}! waiting for the contract to decide it was finalized", event.block_number);
+                println!(
+                    "our transaction was accepted in block #{}! waiting for the contract to decide it was finalized",
+                    event.block_number
+                );
             }
             if event.signature.starts_with("TransactionRolledBack")
                 && event.transaction_hash == txid

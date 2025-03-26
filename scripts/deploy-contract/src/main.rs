@@ -3,7 +3,7 @@ use std::{
     process::{Command, Output},
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use firefly::FireflyCardanoClient;
 use wit_component::ComponentEncoder;

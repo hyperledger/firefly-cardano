@@ -1,4 +1,4 @@
-use anyhow::{bail, Context as _, Result};
+use anyhow::{Context as _, Result, bail};
 use async_trait::async_trait;
 use blockfrost_openapi::models::BlockContent;
 use futures::future::try_join_all;
