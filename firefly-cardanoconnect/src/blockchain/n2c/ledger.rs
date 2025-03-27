@@ -7,12 +7,12 @@ use pallas_network::{
     miniprotocols::localstate::{
         self,
         queries_v16::{
-            get_current_pparams, get_utxo_by_address, get_utxo_by_txin, RationalNumber,
-            TransactionInput, TransactionOutput, TxIns, Value,
+            RationalNumber, TransactionInput, TransactionOutput, TxIns, Value, get_current_pparams,
+            get_utxo_by_address, get_utxo_by_txin,
         },
     },
 };
-use pallas_primitives::{alonzo, conway, Bytes, NonEmptyKeyValuePairs, PositiveCoin};
+use pallas_primitives::{Bytes, NonEmptyKeyValuePairs, PositiveCoin, alonzo, conway};
 use utxorpc_spec::utxorpc::v1alpha::cardano::{
     CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion, VotingThresholds,
 };

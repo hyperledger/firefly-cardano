@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use bech32::{Bech32, Hrp};
 use pallas_addresses::Address;
 use pallas_crypto::{

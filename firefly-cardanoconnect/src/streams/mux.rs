@@ -1,9 +1,9 @@
 use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use dashmap::{DashMap, Entry};
 use firefly_server::apitypes::ToAnyhow;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::{
     select,
     sync::{mpsc, oneshot, watch},
@@ -19,10 +19,10 @@ use crate::{
 };
 
 use super::{
-    blockchain::{ChainListener, DataSource},
-    events::ChainEventStream,
     BlockReference, ContractEvent, EventReference, Listener, ListenerFilter, ListenerId, Stream,
     StreamCheckpoint, StreamId,
+    blockchain::{ChainListener, DataSource},
+    events::ChainEventStream,
 };
 
 #[derive(Clone)]
@@ -429,15 +429,18 @@ impl StreamDispatcherWorker {
             let mut next_event_future = FuturesUnordered::new();
             for listener in self.listeners.values_mut() {
                 let hwm = hwms.get(&listener.id).unwrap();
-                if let Some((event_ref, event)) = listener.stream.try_get_next_event(hwm).await {
-                    // This listener already has an event waiting to surface.
-                    new_events.push((listener.id.clone(), event_ref, event));
-                } else {
-                    // This listener must already be at the tip. We might have to wait a while for more events.
-                    next_event_future.push(async move {
-                        let (event_ref, event) = listener.stream.wait_for_next_event(hwm).await;
-                        (listener.id.clone(), event_ref, event)
-                    });
+                match listener.stream.try_get_next_event(hwm).await {
+                    Some((event_ref, event)) => {
+                        // This listener already has an event waiting to surface.
+                        new_events.push((listener.id.clone(), event_ref, event));
+                    }
+                    _ => {
+                        // This listener must already be at the tip. We might have to wait a while for more events.
+                        next_event_future.push(async move {
+                            let (event_ref, event) = listener.stream.wait_for_next_event(hwm).await;
+                            (listener.id.clone(), event_ref, event)
+                        });
+                    }
                 }
             }
             // If any listeners already had events waiting for us, choose the highest-priority event

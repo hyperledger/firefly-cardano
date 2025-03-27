@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use reqwest::{Client, Response};
 use serde::Serialize;
 use uuid::Uuid;

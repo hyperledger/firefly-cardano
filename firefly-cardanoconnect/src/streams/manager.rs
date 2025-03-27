@@ -11,8 +11,8 @@ use crate::{
 };
 
 use super::{
-    mux::{Multiplexer, StreamSubscription},
     BlockReference, Listener, ListenerFilter, ListenerId, ListenerType, Stream, StreamId,
+    mux::{Multiplexer, StreamSubscription},
 };
 
 pub struct StreamManager {

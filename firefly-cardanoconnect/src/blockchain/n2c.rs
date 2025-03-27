@@ -3,7 +3,7 @@ use std::{
     time::Duration,
 };
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use chainsync::NodeToClientChainSync;
 use ledger::NodeToClientLedger;
 use pallas_crypto::hash::Hasher;

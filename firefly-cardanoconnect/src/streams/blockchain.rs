@@ -4,7 +4,7 @@ use std::{
     sync::Arc,
 };
 
-use anyhow::{anyhow, bail, Result};
+use anyhow::{Result, anyhow, bail};
 use tokio::sync::mpsc;
 use tracing::warn;
 
@@ -266,7 +266,9 @@ impl ChainListenerImpl {
             // Call find_intersect again so the chainsync protocol knows we're following from the tip
             let (head, _) = sync.find_intersect(&[tip.clone()]).await?;
             if !head.is_some_and(|h| h == tip) {
-                bail!("could not start listening from latest: rollback occurred while we were connecting");
+                bail!(
+                    "could not start listening from latest: rollback occurred while we were connecting"
+                );
             };
             tip
         };

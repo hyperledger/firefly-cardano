@@ -1,21 +1,21 @@
 use std::time::SystemTime;
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
         State, WebSocketUpgrade,
+        ws::{Message, WebSocket},
     },
     response::Response,
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{error, instrument, warn, Level};
+use tracing::{Level, error, instrument, warn};
 
 use crate::{
+    AppState,
     operations::{Operation, OperationStatus},
     streams::{Batch, BatchEvent, ContractEvent},
-    AppState,
 };
 
 async fn handle_socket(

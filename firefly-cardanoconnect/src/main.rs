@@ -1,13 +1,13 @@
 use std::{path::PathBuf, sync::Arc};
 
 use aide::axum::{
-    routing::{get, post},
     ApiRouter,
+    routing::{get, post},
 };
 use anyhow::Result;
 use blockchain::BlockchainClient;
 use clap::Parser;
-use config::{load_config, CardanoConnectConfig};
+use config::{CardanoConnectConfig, load_config};
 use contracts::ContractManager;
 use firefly_server::instrumentation;
 use operations::OperationsManager;

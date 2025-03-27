@@ -9,7 +9,7 @@ options = []
 command = "rustfmt"
 excludes = []
 includes = ["*.rs"]
-options = ["--edition", "2021", "--config", "skip_children=true"]
+options = ["--edition", "2024", "--config", "skip_children=true"]
 
 [global]
 excludes = ["*.lock", "*.patch", ".gitignore", ".gitmodules"]

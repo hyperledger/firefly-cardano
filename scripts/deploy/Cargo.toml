@@ -4,7 +4,7 @@ version = "0.4.1"
 description = "A script to build and deploy a Balius-backed API to FireFly"
 license-file.workspace = true
 publish = false
-edition = "2021"
+edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
@@ -17,4 +17,4 @@ serde_json = "1"
 tokio = { version = "1", features = ["full"] }
 uuid = { version = "1", features = ["v4"] }
 wat = "1"
-wit-component = "0.223"
+wit-component = "0.227"

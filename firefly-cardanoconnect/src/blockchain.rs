@@ -4,7 +4,7 @@ use crate::{
     config::{CardanoConnectConfig, Secret},
     streams::{BlockInfo, BlockReference},
 };
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use async_trait::async_trait;
 use balius_runtime::ledgers::{
     CustomLedger, Ledger, LedgerError, TxoRef, Utxo, UtxoPage, UtxoPattern,

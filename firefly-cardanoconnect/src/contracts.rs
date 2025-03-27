@@ -1,9 +1,9 @@
 use std::{
-    collections::{hash_map, BTreeSet, HashMap},
+    collections::{BTreeSet, HashMap, hash_map},
     path::PathBuf,
 };
 
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use balius_runtime::ledgers::Ledger;
 use dashmap::{DashMap, Entry};
 pub use runtime::{ContractEvent, NewTx};

@@ -5,8 +5,8 @@ use serde_json::json;
 use crate::contracts::ContractListener;
 
 use super::{
-    blockchain::{ChainListener, ListenerEvent},
     BlockInfo, BlockReference, ContractEvent, EventId, EventReference, ListenerFilter, ListenerId,
+    blockchain::{ChainListener, ListenerEvent},
 };
 
 pub struct ChainEventStream {
