@@ -27,7 +27,8 @@ pub async fn submit_transaction(
     }): State<AppState>,
     Json(req): Json<SubmitTransactionRequest>,
 ) -> ApiResult<Json<SubmitTransactionResponse>> {
-    let mut transaction: Tx = minicbor::decode(&hex::decode(&req.transaction)?)?;
+    let transaction_bytes = hex::decode(&req.transaction)?;
+    let mut transaction: Tx = minicbor::decode(&transaction_bytes)?;
     signer
         .sign(req.address, &mut transaction)
         .await
