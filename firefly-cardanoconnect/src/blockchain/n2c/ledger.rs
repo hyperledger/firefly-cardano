@@ -19,7 +19,7 @@ use pallas_network::{
 };
 use pallas_primitives::{KeepRaw, PositiveCoin, alonzo, conway};
 use utxorpc_spec::utxorpc::v1alpha::cardano::{
-    CostModel, CostModels, ExPrices, ExUnits, PParams, VotingThresholds,
+    CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion, VotingThresholds,
 };
 
 use crate::{blockchain::BaliusLedger, utils::LazyInit};
@@ -164,15 +164,12 @@ impl BaliusLedger for NodeToClientLedger {
             if let Some(c) = param.min_pool_cost {
                 result.min_pool_cost = c.into();
             }
-            // TODO: uncomment
-            /*
             if let Some((major, minor)) = param.protocol_version {
                 result.protocol_version = Some(ProtocolVersion {
                     major: major as u32,
                     minor: minor as u32,
                 });
             }
-             */
             if let Some(s) = param.max_value_size {
                 result.max_value_size = s;
             }
