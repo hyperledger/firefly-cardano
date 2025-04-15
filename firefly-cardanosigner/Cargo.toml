@@ -19,7 +19,6 @@ minicbor = "0.26"
 pallas-addresses = { git = "https://github.com/txpipe/pallas", rev = "a202cbb" }
 pallas-crypto = { git = "https://github.com/txpipe/pallas", rev = "a202cbb" }
 pallas-primitives = { git = "https://github.com/txpipe/pallas", rev = "a202cbb" }
-pallas-wallet = { git = "https://github.com/txpipe/pallas", rev = "a202cbb" }
 rand = "0.9"
 schemars = "0.8"
 serde = "1"

@@ -15,6 +15,7 @@ use tracing::instrument;
 
 mod config;
 mod keys;
+mod private_key;
 mod routes;
 
 async fn health() -> impl IntoApiResponse {
