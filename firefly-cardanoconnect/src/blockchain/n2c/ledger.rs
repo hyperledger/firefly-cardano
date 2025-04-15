@@ -1,16 +1,23 @@
+use std::collections::BTreeMap;
+
 use anyhow::Result;
 use async_trait::async_trait;
 use balius_runtime::ledgers::{TxoRef, Utxo, UtxoPage};
+use pallas_codec::utils::CborWrap;
 use pallas_network::{
     facades::NodeClient,
-    miniprotocols::localstate::{
-        self,
-        queries_v16::{
-            RationalNumber, TransactionInput, TransactionOutput, TxIns, get_current_pparams,
-            get_utxo_by_address, get_utxo_by_txin,
+    miniprotocols::{
+        localstate::{
+            self,
+            queries_v16::{
+                DatumOption, RationalNumber, TransactionInput, TransactionOutput, TxIns, Value,
+                get_current_pparams, get_utxo_by_address, get_utxo_by_txin,
+            },
         },
+        localtxsubmission::primitives::{NativeScript, PseudoScript},
     },
 };
+use pallas_primitives::{KeepRaw, PositiveCoin, alonzo, conway};
 use utxorpc_spec::utxorpc::v1alpha::cardano::{
     CostModel, CostModels, ExPrices, ExUnits, PParams, VotingThresholds,
 };
@@ -254,9 +261,107 @@ impl BaliusLedger for NodeToClientLedger {
 }
 
 fn encode_transaction_output(output: &TransactionOutput) -> Result<Vec<u8>> {
+    let txo = match output {
+        TransactionOutput::Legacy(o) => conway::TransactionOutput::Legacy(
+            conway::LegacyTransactionOutput {
+                address: o.address.clone(),
+                amount: map_alonzo_value(&o.amount),
+                datum_hash: o.datum_hash,
+            }
+            .into(),
+        ),
+        TransactionOutput::Current(o) => conway::TransactionOutput::PostAlonzo(
+            conway::PostAlonzoTransactionOutput {
+                address: o.address.clone(),
+                value: map_post_alonzo_value(&o.amount),
+                datum_option: o.inline_datum.as_ref().map(map_datum).transpose()?,
+                script_ref: o.script_ref.as_ref().map(map_script_ref).transpose()?,
+            }
+            .into(),
+        ),
+    };
     let mut buffer = vec![];
+    minicbor::encode(&txo, &mut buffer).expect("infallible");
     minicbor::encode(output, &mut buffer).expect("infallible");
     Ok(buffer)
+}
+
+fn map_alonzo_value(v: &Value) -> alonzo::Value {
+    match v {
+        Value::Coin(coin) => alonzo::Value::Coin(coin.into()),
+        Value::Multiasset(coin, assets) => {
+            let coin = coin.into();
+            let assets = assets
+                .clone()
+                .to_vec()
+                .into_iter()
+                .map(|(policy_id, assets)| {
+                    let assets = assets
+                        .to_vec()
+                        .into_iter()
+                        .map(|(asset_name, value)| (asset_name, value.into()))
+                        .collect();
+                    (policy_id, assets)
+                })
+                .collect();
+            alonzo::Value::Multiasset(coin, assets)
+        }
+    }
+}
+
+fn map_post_alonzo_value(v: &Value) -> conway::Value {
+    match v {
+        Value::Coin(coin) => conway::Value::Coin(coin.into()),
+        Value::Multiasset(coin, assets) => {
+            let coin = coin.into();
+            let assets: BTreeMap<_, _> = assets
+                .iter()
+                .filter_map(|(policy_id, assets)| {
+                    let assets: BTreeMap<_, _> = assets
+                        .iter()
+                        .filter_map(|(asset_name, value)| {
+                            let coin = PositiveCoin::try_from(u64::from(value)).ok()?;
+                            Some((asset_name.clone(), coin))
+                        })
+                        .collect();
+                    if assets.is_empty() {
+                        None
+                    } else {
+                        Some((*policy_id, assets))
+                    }
+                })
+                .collect();
+            if assets.is_empty() {
+                conway::Value::Coin(coin)
+            } else {
+                conway::Value::Multiasset(coin, assets)
+            }
+        }
+    }
+}
+
+fn map_datum(d: &DatumOption) -> Result<KeepRaw<'static, conway::DatumOption>> {
+    let datum = match d {
+        DatumOption::Hash(hash) => conway::DatumOption::Hash(*hash),
+        DatumOption::Data(data) => {
+            let bytes = minicbor::to_vec(&data.0)?;
+            let data: conway::PlutusData = minicbor::decode(&bytes)?;
+            conway::DatumOption::Data(CborWrap(data.into()))
+        }
+    };
+    Ok(datum.into())
+}
+
+fn map_script_ref(r: &CborWrap<PseudoScript<NativeScript>>) -> Result<CborWrap<conway::ScriptRef>> {
+    let bytes = minicbor::to_vec(&r.0)?;
+    let script_ref: conway::ScriptRef = minicbor::decode(&bytes)?;
+    let static_script_ref: conway::ScriptRef<'static> = match script_ref {
+        conway::ScriptRef::NativeScript(s) => conway::ScriptRef::NativeScript(s.to_owned()),
+        conway::ScriptRef::PlutusV1Script(s) => conway::ScriptRef::PlutusV1Script(s),
+        conway::ScriptRef::PlutusV2Script(s) => conway::ScriptRef::PlutusV2Script(s),
+        conway::ScriptRef::PlutusV3Script(s) => conway::ScriptRef::PlutusV3Script(s),
+    };
+    Ok(CborWrap(static_script_ref))
 }
 
 fn map_rational(r: RationalNumber) -> utxorpc_spec::utxorpc::v1alpha::cardano::RationalNumber {
