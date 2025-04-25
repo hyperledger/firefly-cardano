@@ -16,9 +16,9 @@ clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.26"
-pallas-addresses = { git = "https://github.com/txpipe/pallas", rev = "b720f78" }
-pallas-crypto = { git = "https://github.com/txpipe/pallas", rev = "b720f78" }
-pallas-primitives = { git = "https://github.com/txpipe/pallas", rev = "b720f78" }
+pallas-addresses = { git = "https://github.com/txpipe/pallas", rev = "8ae9cd0" }
+pallas-crypto = { git = "https://github.com/txpipe/pallas", rev = "8ae9cd0" }
+pallas-primitives = { git = "https://github.com/txpipe/pallas", rev = "8ae9cd0" }
 rand = "0.9"
 schemars = "0.8"
 serde = "1"
