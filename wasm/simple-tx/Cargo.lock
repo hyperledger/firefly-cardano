@@ -885,16 +885,16 @@ dependencies = [
 
 [[package]]
 name = "pallas-addresses"
-version = "1.0.0-alpha.0"
-source = "git+https://github.com/txpipe/pallas?rev=54f300f#54f300fa1e32375a27d4a8e8989fd0e8449eaf83"
+version = "1.0.0-alpha.1"
+source = "git+https://github.com/txpipe/pallas?rev=b720f78#b720f78713a4fc54fce3a633ff2e3767ddce2d2e"
 dependencies = [
  "base58",
  "bech32",
  "crc",
  "cryptoxide",
  "hex",
- "pallas-codec 1.0.0-alpha.0",
- "pallas-crypto 1.0.0-alpha.0",
+ "pallas-codec 1.0.0-alpha.1",
+ "pallas-crypto 1.0.0-alpha.1",
  "thiserror 1.0.69",
 ]
 
@@ -912,8 +912,8 @@ dependencies = [
 
 [[package]]
 name = "pallas-codec"
-version = "1.0.0-alpha.0"
-source = "git+https://github.com/txpipe/pallas?rev=54f300f#54f300fa1e32375a27d4a8e8989fd0e8449eaf83"
+version = "1.0.0-alpha.1"
+source = "git+https://github.com/txpipe/pallas?rev=b720f78#b720f78713a4fc54fce3a633ff2e3767ddce2d2e"
 dependencies = [
  "hex",
  "minicbor 0.26.4",
@@ -938,12 +938,12 @@ dependencies = [
 
 [[package]]
 name = "pallas-crypto"
-version = "1.0.0-alpha.0"
-source = "git+https://github.com/txpipe/pallas?rev=54f300f#54f300fa1e32375a27d4a8e8989fd0e8449eaf83"
+version = "1.0.0-alpha.1"
+source = "git+https://github.com/txpipe/pallas?rev=b720f78#b720f78713a4fc54fce3a633ff2e3767ddce2d2e"
 dependencies = [
  "cryptoxide",
  "hex",
- "pallas-codec 1.0.0-alpha.0",
+ "pallas-codec 1.0.0-alpha.1",
  "rand_core",
  "serde",
  "thiserror 1.0.69",
@@ -1311,7 +1311,7 @@ version = "0.1.0"
 dependencies = [
  "firefly-balius",
  "hex",
- "pallas-addresses 1.0.0-alpha.0",
+ "pallas-addresses 1.0.0-alpha.1",
  "serde",
 ]
 

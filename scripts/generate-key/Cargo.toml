@@ -13,8 +13,8 @@ bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 hex = "0.4"
 minicbor = "0.26"
-pallas-crypto = { git = "https://github.com/txpipe/pallas", rev = "54f300f" }
-pallas-primitives = { git = "https://github.com/txpipe/pallas", rev = "54f300f" }
+pallas-crypto = { git = "https://github.com/txpipe/pallas", rev = "b720f78" }
+pallas-primitives = { git = "https://github.com/txpipe/pallas", rev = "b720f78" }
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
