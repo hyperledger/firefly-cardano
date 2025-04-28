@@ -279,7 +279,6 @@ fn encode_transaction_output(output: &TransactionOutput) -> Result<Vec<u8>> {
     };
     let mut buffer = vec![];
     minicbor::encode(&txo, &mut buffer).expect("infallible");
-    minicbor::encode(output, &mut buffer).expect("infallible");
     Ok(buffer)
 }
 
