@@ -1,6 +1,6 @@
 [package]
 name = "firefly-cardanosigner"
-version = "0.4.1"
+version = "0.4.2"
 description = "A service managing keys and signing for the FireFly Cardano connector"
 license-file.workspace = true
 publish = false
@@ -16,10 +16,9 @@ clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.26"
-pallas-addresses = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-crypto = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-primitives = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-wallet = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-addresses = "1.0.0-alpha.2"
+pallas-crypto = "1.0.0-alpha.2"
+pallas-primitives = "1.0.0-alpha.2"
 rand = "0.9"
 schemars = "0.8"
 serde = "1"

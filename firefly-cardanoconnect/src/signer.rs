@@ -22,7 +22,7 @@ impl CardanoSigner {
         Ok(Self { client, sign_url })
     }
 
-    pub async fn sign(&self, address: String, transaction: &mut Tx) -> ApiResult<()> {
+    pub async fn sign(&self, address: String, transaction: &mut Tx<'_>) -> ApiResult<()> {
         let req = {
             let mut encoder = Encoder::new(vec![]);
             transaction.encode(&mut encoder, &mut ())?;
@@ -36,10 +36,8 @@ impl CardanoSigner {
             .post(self.sign_url.clone(), &req)
             .await
             .context("Could not sign transaction")?;
-        let witness_set: WitnessSet = {
-            let bytes = hex::decode(res.transaction_witness_set)?;
-            minicbor::decode(&bytes)?
-        };
+        let witness_set_bytes = hex::decode(res.transaction_witness_set)?;
+        let witness_set: WitnessSet = minicbor::decode(&witness_set_bytes)?;
         self.update_witness_set(transaction, witness_set)?;
         Ok(())
     }

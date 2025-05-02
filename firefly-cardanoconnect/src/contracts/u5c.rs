@@ -66,8 +66,8 @@ fn convert_plutus_data(data: conway::PlutusData) -> cardano::PlutusData {
     }
 }
 
-fn convert_native_script(script: conway::NativeScript) -> cardano::NativeScript {
-    fn convert_native_script_list(scripts: Vec<conway::NativeScript>) -> cardano::NativeScriptList {
+fn convert_native_script(script: &conway::NativeScript) -> cardano::NativeScript {
+    fn convert_native_script_list(scripts: &[conway::NativeScript]) -> cardano::NativeScriptList {
         let mut new_list = cardano::NativeScriptList::default();
         for script in scripts {
             new_list.items.push(convert_native_script(script));
@@ -87,12 +87,12 @@ fn convert_native_script(script: conway::NativeScript) -> cardano::NativeScript 
         }
         conway::NativeScript::ScriptNOfK(k, scripts) => {
             InnerNativeScript::ScriptNOfK(cardano::ScriptNOfK {
-                k,
-                scripts: scripts.into_iter().map(convert_native_script).collect(),
+                k: *k,
+                scripts: scripts.iter().map(convert_native_script).collect(),
             })
         }
-        conway::NativeScript::InvalidBefore(t) => InnerNativeScript::InvalidBefore(t),
-        conway::NativeScript::InvalidHereafter(t) => InnerNativeScript::InvalidHereafter(t),
+        conway::NativeScript::InvalidBefore(t) => InnerNativeScript::InvalidBefore(*t),
+        conway::NativeScript::InvalidHereafter(t) => InnerNativeScript::InvalidHereafter(*t),
     };
     cardano::NativeScript {
         native_script: Some(inner),
@@ -107,10 +107,10 @@ fn convert_tx(bytes: &[u8]) -> cardano::Tx {
         ..cardano::Tx::default()
     };
     let real_tx: conway::Tx = minicbor::decode(bytes).unwrap();
-    for real_output in real_tx.transaction_body.outputs {
+    for real_output in &real_tx.transaction_body.outputs {
         let mut output = cardano::TxOutput::default();
         match real_output {
-            conway::PseudoTransactionOutput::Legacy(txo) => {
+            conway::TransactionOutput::Legacy(txo) => {
                 output.address = txo.address.to_vec().into();
                 if let Some(hash) = txo.datum_hash {
                     output.datum = Some(cardano::Datum {
@@ -118,12 +118,12 @@ fn convert_tx(bytes: &[u8]) -> cardano::Tx {
                         ..cardano::Datum::default()
                     });
                 }
-                match txo.amount {
+                match &txo.amount {
                     alonzo::Value::Coin(c) => {
-                        output.coin = c;
+                        output.coin = *c;
                     }
                     alonzo::Value::Multiasset(c, assets) => {
-                        output.coin = c;
+                        output.coin = *c;
                         for (policy_id, policy_assets) in assets.iter() {
                             let assets = policy_assets
                                 .iter()
@@ -142,29 +142,29 @@ fn convert_tx(bytes: &[u8]) -> cardano::Tx {
                     }
                 }
             }
-            pallas_primitives::conway::PseudoTransactionOutput::PostAlonzo(txo) => {
+            conway::TransactionOutput::PostAlonzo(txo) => {
                 output.address = txo.address.to_vec().into();
-                if let Some(datum_option) = txo.datum_option {
+                if let Some(datum_option) = txo.datum_option.as_deref() {
                     let mut datum = cardano::Datum::default();
                     match datum_option {
-                        conway::PseudoDatumOption::Hash(hash) => {
+                        conway::DatumOption::Hash(hash) => {
                             datum.hash = hash.to_vec().into();
                         }
-                        conway::PseudoDatumOption::Data(data) => {
+                        conway::DatumOption::Data(data) => {
                             let mut cbor = vec![];
-                            minicbor::encode(&data, &mut cbor).expect("infallible");
+                            minicbor::encode(data, &mut cbor).expect("infallible");
                             datum.hash = data.0.compute_hash().to_vec().into();
-                            datum.payload = Some(convert_plutus_data(data.0));
+                            datum.payload = Some(convert_plutus_data((*data.0).clone()));
                             datum.original_cbor = cbor.into();
                         }
                     }
                 }
-                match txo.value {
+                match &txo.value {
                     conway::Value::Coin(c) => {
-                        output.coin = c;
+                        output.coin = *c;
                     }
                     conway::Value::Multiasset(c, assets) => {
-                        output.coin = c;
+                        output.coin = *c;
                         for (policy_id, policy_assets) in assets.iter() {
                             let assets = policy_assets
                                 .iter()
@@ -182,18 +182,18 @@ fn convert_tx(bytes: &[u8]) -> cardano::Tx {
                         }
                     }
                 }
-                if let Some(script) = txo.script_ref {
-                    let inner = match script.0 {
-                        conway::PseudoScript::NativeScript(script) => {
+                if let Some(script) = txo.script_ref.as_deref() {
+                    let inner = match script {
+                        conway::ScriptRef::NativeScript(script) => {
                             cardano::script::Script::Native(convert_native_script(script))
                         }
-                        conway::PseudoScript::PlutusV1Script(script) => {
+                        conway::ScriptRef::PlutusV1Script(script) => {
                             cardano::script::Script::PlutusV1(script.0.to_vec().into())
                         }
-                        conway::PseudoScript::PlutusV2Script(script) => {
+                        conway::ScriptRef::PlutusV2Script(script) => {
                             cardano::script::Script::PlutusV2(script.0.to_vec().into())
                         }
-                        conway::PseudoScript::PlutusV3Script(script) => {
+                        conway::ScriptRef::PlutusV3Script(script) => {
                             cardano::script::Script::PlutusV3(script.0.to_vec().into())
                         }
                     };
