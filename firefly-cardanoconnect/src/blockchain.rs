@@ -71,6 +71,7 @@ impl BlockchainConfig {
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum ClientImpl {
     Blockfrost(Blockfrost),
     NodeToClient(RwLock<NodeToClient>),
