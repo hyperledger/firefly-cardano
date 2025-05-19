@@ -489,6 +489,7 @@ struct ListenerState {
     stream: ChainEventStream,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum StreamDispatcherStateChange {
     NewSettings(StreamDispatcherSettings),
     NewListener(

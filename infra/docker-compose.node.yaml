@@ -2,7 +2,7 @@ include:
   - docker-compose.common.yaml
 services:
   init-node:
-    image: ghcr.io/input-output-hk/mithril-client:2506.0-2627f17
+    image: ghcr.io/input-output-hk/mithril-client:2517.1-b1a2faa
     entrypoint: /app/bin/entrypoint.sh
     user: "${UID}:${GID}"
     environment:
@@ -13,7 +13,7 @@ services:
     - node-db:/data
 
   cardano-node:
-    image: ghcr.io/intersectmbo/cardano-node:10.1.4
+    image: ghcr.io/intersectmbo/cardano-node:10.3.1
     user: "${UID}:${GID}"
     environment:
       NETWORK: preview
