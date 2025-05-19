@@ -1,6 +1,6 @@
 [package]
 name = "firefly-cardano-generate-key"
-version = "0.4.1"
+version = "0.4.2"
 description = "A script to easily generate Cardano addresses"
 license-file.workspace = true
 publish = false
@@ -13,8 +13,8 @@ bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 hex = "0.4"
 minicbor = "0.26"
-pallas-crypto = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-primitives = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-crypto = "1.0.0-alpha.2"
+pallas-primitives = "1.0.0-alpha.2"
 rand = "0.8"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"

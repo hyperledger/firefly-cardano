@@ -138,7 +138,7 @@ impl BlockchainClient {
         }
     }
 
-    pub async fn submit(&self, transaction: Tx) -> Result<String> {
+    pub async fn submit(&self, transaction: Tx<'_>) -> Result<String> {
         match &self.client {
             ClientImpl::Blockfrost(bf) => bf.submit(transaction).await,
             ClientImpl::Mock(_) => bail!("mock transaction submission not implemented"),

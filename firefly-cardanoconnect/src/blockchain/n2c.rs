@@ -52,7 +52,7 @@ impl NodeToClient {
         }
     }
 
-    pub async fn submit(&mut self, transaction: Tx, era: u16) -> Result<String> {
+    pub async fn submit(&mut self, transaction: Tx<'_>, era: u16) -> Result<String> {
         let txid = {
             let txid_bytes = Hasher::<256>::hash_cbor(&transaction.transaction_body);
             hex::encode(txid_bytes)

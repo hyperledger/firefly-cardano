@@ -21,7 +21,7 @@ impl Blockfrost {
         }
     }
 
-    pub async fn submit(&self, transaction: Tx) -> Result<String> {
+    pub async fn submit(&self, transaction: Tx<'_>) -> Result<String> {
         let transaction_data = {
             let mut bytes = vec![];
             minicbor::encode(transaction, &mut bytes).expect("infallible");

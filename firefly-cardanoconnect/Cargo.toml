@@ -1,6 +1,6 @@
 [package]
 name = "firefly-cardanoconnect"
-version = "0.4.1"
+version = "0.4.2"
 description = "An implementation of the FireFly Connector API for Cardano"
 license-file.workspace = true
 publish = false
@@ -19,12 +19,12 @@ clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 dashmap = "6"
 futures = "0.3"
-pallas-addresses = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-codec = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-crypto = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-primitives = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-network = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
-pallas-traverse = { git = "https://github.com/txpipe/pallas.git", rev = "2ddb5b066bbde9d2ed55014b286f47ad370b828e" }
+pallas-addresses = "1.0.0-alpha.2"
+pallas-codec = "1.0.0-alpha.2"
+pallas-crypto = "1.0.0-alpha.2"
+pallas-primitives = "1.0.0-alpha.2"
+pallas-network = "1.0.0-alpha.2"
+pallas-traverse = "1.0.0-alpha.2"
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
 minicbor = "0.26"
