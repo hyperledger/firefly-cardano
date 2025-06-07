@@ -1,35 +1,27 @@
-name: DevShell
+name: DevShell Validation
 on:
   push:
 
 jobs:
+  validate-devshell:
+    name: Validate DevShell - ${{ matrix.system }}
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      matrix:
+        include:
+          - system: x86_64-linux
+            runner: ubuntu-latest
+          - system: x86_64-darwin
+            runner: macos-latest
+          - system: aarch64-darwin
+            runner: macos-latest
 
-  validate-devshell-x86_64-linux:
-    runs-on: ubuntu-latest
     steps:
-    - name: 📥 Checkout repository
-      uses: actions/checkout@v4.2.1
-    - name: 🧰 Setup Nix
-      uses: nixbuild/nix-quick-install-action@v29
-    - name: 🚀 Eval
-      run: nix eval .#devShells.x86_64-linux.default --apply toString
+      - name: 📥 Checkout repository
+        uses: actions/checkout@v4.2.1
 
-  validate-devshell-x86_64-darwin:
-    runs-on: macos-latest
-    steps:
-    - name: 📥 Checkout repository
-      uses: actions/checkout@v4.2.1
-    - name: 🧰 Setup Nix
-      uses: nixbuild/nix-quick-install-action@v29
-    - name: 🚀 Eval
-      run: nix eval .#devShells.x86_64-darwin.default --apply toString
+      - name: 🧰 Setup Nix
+        uses: nixbuild/nix-quick-install-action@v29
 
-  validate-devshell-aarch64-darwin:
-    runs-on: macos-latest
-    steps:
-    - name: 📥 Checkout repository
-      uses: actions/checkout@v4.2.1
-    - name: 🧰 Setup Nix
-      uses: nixbuild/nix-quick-install-action@v29
-    - name: 🚀 Eval
-      run: nix eval .#devShells.aarch64-darwin.default --apply toString
+      - name: 🚀 Eval DevShell for ${{ matrix.system }}
+        run: nix eval .#devShells.${{ matrix.system }}.default --apply toString
