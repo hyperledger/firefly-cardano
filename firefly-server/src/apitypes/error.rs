@@ -2,8 +2,8 @@ use std::fmt::Display;
 
 use aide::OperationOutput;
 use axum::{
-    response::{IntoResponse, Response},
     Json,
+    response::{IntoResponse, Response},
 };
 use reqwest::StatusCode;
 

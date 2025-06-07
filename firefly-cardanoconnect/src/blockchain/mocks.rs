@@ -65,10 +65,6 @@ impl ChainSyncClient for MockChainSync {
         let tip = chain.last().map(|b| b.as_reference()).unwrap_or_default();
         Ok((intersect.map(|i| i.as_reference()), tip))
     }
-
-    async fn request_block(&mut self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
-        self.chain.request_block(block_ref).await
-    }
 }
 
 // Mock implementation of something which can query the chain
@@ -134,22 +130,6 @@ impl MockChain {
         Some(final_rollback_target)
     }
 
-    // this is a simpler version of request_range from the block fetch protocol.
-    pub async fn request_block(&self, block_ref: &BlockReference) -> Result<Option<BlockInfo>> {
-        match block_ref {
-            BlockReference::Origin => Ok(None),
-            BlockReference::Point(slot, hash) => {
-                let chain = self.chain.read().await;
-                Ok(chain
-                    .iter()
-                    .rev()
-                    .find(|b| b.block_hash == *hash)
-                    .filter(|b| b.block_slot == *slot)
-                    .cloned())
-            }
-        }
-    }
-
     // TODO: roll back sometimes
     async fn generate(
         chain: Arc<RwLock<Vec<BlockInfo>>>,
@@ -184,7 +164,7 @@ impl MockChain {
         };
 
         let mut transaction_hashes = vec![];
-        for _ in 0..rng.gen_range(0..10) {
+        for _ in 0..rng.random_range(0..10) {
             transaction_hashes.push(Self::generate_hash(rng));
         }
         let block = BlockInfo {
@@ -200,7 +180,7 @@ impl MockChain {
     }
 
     fn generate_hash(rng: &mut ChaChaRng) -> String {
-        let bytes: [u8; 32] = rng.gen();
+        let bytes: [u8; 32] = rng.random();
         hex::encode(bytes)
     }
 }

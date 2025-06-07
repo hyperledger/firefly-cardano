@@ -1,0 +1,102 @@
+{
+  "name": "simple-tx",
+  "description": "Simple TX submission contract",
+  "networkName": "simple-tx",
+  "version": "0.1.0",
+  "errors": [],
+  "methods": [
+    {
+      "description": "Sends ADA to a wallet",
+      "details": {},
+      "name": "send_ada",
+      "params": [
+        {
+          "name": "fromAddress",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "toAddress",
+          "schema": {
+            "type": "string"
+          }
+        },
+        {
+          "name": "amount",
+          "schema": {
+            "type": "integer"
+          }
+        }
+      ],
+      "returns": []
+    },
+    {
+      "description": "Queries the current state of this contract",
+      "details": {},
+      "name": "query_current_state",
+      "params": [],
+      "returns": [
+        {
+          "name": "submittedTxs",
+          "schema": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }  
+          }
+        },
+        {
+          "name": "pendingTxs",
+          "schema": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "array",
+              "items": {
+                "type": "string"
+              }
+            }
+          }
+        }
+      ]
+    }
+  ],
+  "events": [
+    {
+      "name": "TransactionAccepted",
+      "description": "",
+      "params": [
+        {
+          "name": "transactionId",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    {
+      "name": "TransactionRolledBack",
+      "description": "",
+      "params": [
+        {
+          "name": "transactionId",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    },
+    {
+      "name": "TransactionFinalized",
+      "description": "",
+      "params": [
+        {
+          "name": "transactionId",
+          "schema": {
+            "type": "string"
+          }
+        }
+      ]
+    }
+  ]
+}

@@ -1,34 +1,37 @@
 [package]
 name = "firefly-cardanoconnect"
-version = "0.1.0"
-edition = "2021"
-repository = "https://github.com/SundaeSwap-finance/firefly-cardano"
+version = "0.4.2"
+description = "An implementation of the FireFly Connector API for Cardano"
+license-file.workspace = true
+publish = false
+edition = "2024"
+repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
 aide = { version = "0.14", features = ["axum", "axum-json", "axum-query"] }
 anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["macros", "ws"] }
-balius-runtime = { git = "https://github.com/txpipe/balius.git", rev = "cf2791d" }
+balius-runtime = "0.3.4"
 blockfrost = { git = "https://github.com/SupernaviX/blockfrost-rust.git", rev = "cfa7a5e", default-features = false, features = ["rustls-tls"] }
 blockfrost-openapi = "0.1.69"
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
 dashmap = "6"
 futures = "0.3"
-pallas-addresses = "0.32"
-pallas-codec = "0.32"
-pallas-crypto = "0.32"
-pallas-primitives = "0.32"
-pallas-network = "0.32"
-pallas-traverse = "0.32"
+pallas-addresses = "1.0.0-alpha.2"
+pallas-codec = "1.0.0-alpha.2"
+pallas-crypto = "1.0.0-alpha.2"
+pallas-primitives = "1.0.0-alpha.2"
+pallas-network = "1.0.0-alpha.2"
+pallas-traverse = "1.0.0-alpha.2"
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
-minicbor = "0.25"
+minicbor = "0.26"
 num-rational = "0.4"
 num-traits = "0.2"
-rand = "0.8"
-rand_chacha = "0.3"
+rand = "0.9"
+rand_chacha = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 refinery = { version = "0.8", features = ["rusqlite"] }
 rusqlite = { version = "0.31", features = ["bundled"] }
@@ -39,4 +42,4 @@ tokio = { version = "1", features = ["full"] }
 tokio-rusqlite = { version = "0.5" }
 tracing = "0.1"
 ulid = "1"
-utxorpc-spec = "0.12"
+utxorpc-spec = "0.15"

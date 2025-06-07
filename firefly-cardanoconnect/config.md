@@ -21,6 +21,13 @@
 |networkMagic|An optional magic number|`int`|depends on `network`
 |genesisHash|The hash of the genesis block|`string`|depends on `network`
 
+## contracts
+|Key|Description|Type|Default Value|
+|---|-----------|----|-------------|
+|componentsPath|Path on-disk to store the wasm components which define contracts|`string`||
+|storesPath|Path on-disk to store persistent data for contracts|`string`||
+|cacheSize|The amount of memory (in bytes) used to cache data|`number`|0|
+
 ## http
 
 |Key|Description|Type|Default Value|

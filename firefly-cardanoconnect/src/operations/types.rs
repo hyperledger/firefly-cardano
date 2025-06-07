@@ -9,6 +9,7 @@ pub struct Operation {
     pub id: OperationId,
     pub status: OperationStatus,
     pub tx_id: Option<String>,
+    pub contract_address: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
@@ -32,4 +33,12 @@ impl OperationStatus {
             None
         }
     }
+}
+
+strong_id!(OperationUpdateId, String);
+
+#[derive(Debug, Clone)]
+pub struct OperationUpdate {
+    pub update_id: OperationUpdateId,
+    pub operation: Operation,
 }

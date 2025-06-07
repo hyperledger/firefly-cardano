@@ -1,4 +1,4 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use reqwest::{Client, Response};
 use reqwest_websocket::{Message, RequestBuilderExt, WebSocket};
 use serde::{Deserialize, Serialize};
@@ -160,12 +160,20 @@ impl TryFrom<Message> for FireflyWebSocketEventBatch {
 }
 
 #[derive(Debug, Deserialize)]
+#[serde(tag = "type")]
+pub enum FireflyWebSocketEvent {
+    ContractEvent(FireflyWebSocketContractEvent),
+    Receipt,
+}
+
+#[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
-pub struct FireflyWebSocketEvent {
+pub struct FireflyWebSocketContractEvent {
     pub listener_id: String,
     pub signature: String,
     pub block_number: u64,
     pub transaction_hash: String,
+    pub data: Value,
 }
 
 #[derive(Serialize)]
@@ -199,8 +207,6 @@ struct OperationStatus {
 #[derive(Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Tip {
-    #[allow(unused)]
-    pub block_height: u64,
     pub block_slot: u64,
     pub block_hash: String,
 }
@@ -245,5 +251,9 @@ pub enum ListenerType {
 #[derive(Serialize)]
 #[serde(rename_all = "camelCase")]
 pub enum ListenerFilter {
-    TransactionId(String),
+    #[serde(rename_all = "camelCase")]
+    Event {
+        contract: String,
+        event_path: String,
+    },
 }

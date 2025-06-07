@@ -1,13 +1,23 @@
 use axum::{
-    extract::{Path, State},
     Json,
+    extract::{Path, State},
 };
 use firefly_server::apitypes::{ApiResult, NoContent};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
 
-use crate::{operations::Operation, AppState};
+use crate::{AppState, operations::Operation};
+
+#[derive(Deserialize, JsonSchema)]
+pub struct QueryRequest {
+    /// The name of the contract getting invoked.
+    pub address: String,
+    /// A description of the method getting invoked.
+    pub method: ABIMethod,
+    /// Any parameters needed to invoke the method.
+    pub params: Vec<Value>,
+}
 
 #[derive(Deserialize, JsonSchema)]
 pub struct InvokeRequest {
@@ -36,6 +46,7 @@ pub struct DeployRequest {
 #[derive(Deserialize, JsonSchema)]
 pub struct ABIContract {
     pub name: String,
+    pub version: String,
 }
 
 #[derive(Deserialize, JsonSchema)]
@@ -90,9 +101,9 @@ pub async fn deploy_contract(
     Json(req): Json<DeployRequest>,
 ) -> ApiResult<NoContent> {
     let id = req.id.into();
-    let name = &req.definition.name;
+    let address = format!("{}@{}", req.definition.name, req.definition.version);
     let contract = hex::decode(req.contract)?;
-    match operations.deploy(id, name, &contract).await {
+    match operations.deploy(id, &address, &contract).await {
         Ok(()) => Ok(NoContent),
         Err(error) => Err(error.with_field("submissionRejected", true)),
     }
@@ -106,17 +117,22 @@ pub async fn invoke_contract(
     let from = &req.from;
     let contract = &req.address;
     let method = &req.method.name;
-    let mut params = serde_json::Map::new();
-    for (schema, value) in req.method.params.iter().zip(req.params.into_iter()) {
-        params.insert(schema.name.to_string(), value);
-    }
-    match operations
-        .invoke(id, from, contract, method, params.into())
-        .await
-    {
+    let params = format_params(&req.method, req.params);
+    match operations.invoke(id, from, contract, method, params).await {
         Ok(()) => Ok(NoContent),
         Err(error) => Err(error.with_field("submissionRejected", true)),
     }
+}
+
+pub async fn query_contract(
+    State(AppState { operations, .. }): State<AppState>,
+    Json(req): Json<QueryRequest>,
+) -> ApiResult<Json<Value>> {
+    let contract = &req.address;
+    let method = &req.method.name;
+    let params = format_params(&req.method, req.params);
+    let result = operations.query(contract, method, params).await?;
+    Ok(Json(result))
 }
 
 pub async fn get_operation_status(
@@ -126,4 +142,15 @@ pub async fn get_operation_status(
     let id = id.into();
     let op = operations.get_operation(&id).await?;
     Ok(Json(op.into()))
+}
+
+fn format_params(method: &ABIMethod, values: Vec<Value>) -> Value {
+    if values.is_empty() {
+        return Value::Null;
+    }
+    let mut params = serde_json::Map::new();
+    for (schema, value) in method.params.iter().zip(values) {
+        params.insert(schema.name.clone(), value);
+    }
+    params.into()
 }

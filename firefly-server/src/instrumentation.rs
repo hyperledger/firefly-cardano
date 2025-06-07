@@ -4,7 +4,7 @@ use anyhow::Result;
 use serde::Deserialize;
 use tracing::Level;
 use tracing_subscriber::{
-    filter::Targets, fmt, layer::SubscriberExt, util::SubscriberInitExt, Layer, Registry,
+    Layer, Registry, filter::Targets, fmt, layer::SubscriberExt, util::SubscriberInitExt,
 };
 
 #[derive(Debug, Deserialize)]

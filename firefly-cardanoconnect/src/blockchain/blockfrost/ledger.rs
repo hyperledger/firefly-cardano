@@ -1,15 +1,23 @@
-use std::collections::{hash_map::Entry, HashMap};
+use std::{
+    collections::{HashMap, hash_map::Entry},
+    str::FromStr,
+};
 
+use anyhow::Result;
 use async_trait::async_trait;
-use balius_runtime::ledgers::{CustomLedger, LedgerError, TxoRef, Utxo, UtxoPage, UtxoPattern};
+use balius_runtime::ledgers::{LedgerError, TxoRef, Utxo, UtxoPage};
+use blockfrost::Pagination;
 use num_rational::Rational32;
 use num_traits::FromPrimitive as _;
 use pallas_traverse::MultiEraTx;
 use utxorpc_spec::utxorpc::v1alpha::cardano::{
     CostModel, CostModels, ExPrices, ExUnits, PParams, ProtocolVersion, RationalNumber,
+    VotingThresholds,
 };
 
-use crate::blockfrost::{BlockfrostClient, Pagination};
+use crate::blockchain::BaliusLedger;
+
+use super::client::BlockfrostClient;
 
 pub struct BlockfrostLedger {
     client: BlockfrostClient,
@@ -22,35 +30,83 @@ impl BlockfrostLedger {
 }
 
 #[async_trait]
-impl CustomLedger for BlockfrostLedger {
-    async fn read_utxos(&mut self, refs: Vec<TxoRef>) -> Result<Vec<Utxo>, LedgerError> {
+impl BaliusLedger for BlockfrostLedger {
+    async fn get_utxos(&mut self, refs: &[TxoRef]) -> Result<Vec<Utxo>> {
         let mut txs = TxDict::new(&mut self.client);
         let mut result = vec![];
-        for ref_ in &refs {
+        for ref_ in refs {
             let tx_bytes = txs.get_bytes(hex::encode(&ref_.tx_hash)).await?;
             let tx = TxDict::decode_tx(tx_bytes)?;
-            let Some(txo) = tx.output_at(ref_.tx_index as usize) else {
-                return Err(LedgerError::NotFound(ref_.clone()));
-            };
-            result.push(Utxo {
-                ref_: ref_.clone(),
-                body: txo.encode(),
-            });
+            if let Some(txo) = tx.output_at(ref_.tx_index as usize) {
+                result.push(Utxo {
+                    ref_: ref_.clone(),
+                    body: txo.encode(),
+                });
+            }
         }
         Ok(result)
     }
 
-    async fn read_params(&mut self) -> Result<Vec<u8>, LedgerError> {
+    async fn get_utxos_by_address(
+        &mut self,
+        address: Vec<u8>,
+        start: Option<String>,
+        max: usize,
+    ) -> Result<UtxoPage> {
+        let address = pallas_addresses::Address::from_bytes(&address)
+            .and_then(|a| a.to_bech32())
+            .map_err(|err| LedgerError::Internal(err.to_string()))?;
+        let page = match start {
+            Some(s) => s
+                .parse::<usize>()
+                .map_err(|e| LedgerError::Internal(e.to_string()))?,
+            None => 1,
+        };
+
+        let pagination = Pagination::new(blockfrost::Order::Asc, page, max);
+        let query = self
+            .client
+            .addresses_utxos(&address, pagination)
+            .await
+            .map_err(|err| LedgerError::Upstream(err.to_string()))?;
+
+        let mut utxos = vec![];
+        let mut txs = TxDict::new(&mut self.client);
+        for utxo in query {
+            let raw_tx_hash =
+                hex::decode(&utxo.tx_hash).map_err(|e| LedgerError::Upstream(e.to_string()))?;
+            let ref_ = TxoRef {
+                tx_hash: raw_tx_hash,
+                tx_index: utxo.tx_index as u32,
+            };
+
+            let tx_bytes = txs.get_bytes(utxo.tx_hash.clone()).await?;
+            let tx = TxDict::decode_tx(tx_bytes)?;
+            if let Some(txo) = tx.output_at(utxo.tx_index as usize) {
+                utxos.push(Utxo {
+                    ref_,
+                    body: txo.encode(),
+                });
+            };
+        }
+
+        let next_token = if utxos.len() == max {
+            Some((page + 1).to_string())
+        } else {
+            None
+        };
+
+        Ok(UtxoPage { utxos, next_token })
+    }
+
+    async fn get_params(&mut self) -> Result<PParams> {
         let raw_params = self
             .client
             .epochs_latest_parameters()
             .await
             .map_err(|e| LedgerError::Upstream(e.to_string()))?;
-        let params = PParams {
-            coins_per_utxo_byte: raw_params
-                .coins_per_utxo_size
-                .map(|v| v.parse().unwrap())
-                .unwrap_or_default(),
+        Ok(PParams {
+            coins_per_utxo_byte: string_to_num(raw_params.coins_per_utxo_size),
             max_tx_size: raw_params.max_tx_size as u64,
             min_fee_coefficient: raw_params.min_fee_a as u64,
             min_fee_constant: raw_params.min_fee_b as u64,
@@ -68,10 +124,7 @@ impl CustomLedger for BlockfrostLedger {
                 major: raw_params.protocol_major_ver as u32,
                 minor: raw_params.protocol_minor_ver as u32,
             }),
-            max_value_size: raw_params
-                .max_val_size
-                .map(|v| v.parse().unwrap())
-                .unwrap_or_default(),
+            max_value_size: string_to_num(raw_params.max_val_size),
             collateral_percentage: raw_params
                 .collateral_percent
                 .map(|v| v as u64)
@@ -105,70 +158,35 @@ impl CustomLedger for BlockfrostLedger {
                 raw_params.max_block_ex_steps,
                 raw_params.max_block_ex_mem,
             ),
-        };
-        Ok(serde_json::to_vec(&params).unwrap())
-    }
-
-    async fn search_utxos(
-        &mut self,
-        pattern: UtxoPattern,
-        start: Option<String>,
-        max_items: u32,
-    ) -> Result<UtxoPage, LedgerError> {
-        if pattern.asset.is_some() {
-            return Err(LedgerError::Internal(
-                "querying by asset is not implemented".into(),
-            ));
-        }
-        let Some(address) = pattern.address else {
-            return Err(LedgerError::Internal("address is required".into()));
-        };
-        let address = pallas_addresses::Address::from_bytes(&address.exact_address)
-            .and_then(|a| a.to_bech32())
-            .map_err(|err| LedgerError::Internal(err.to_string()))?;
-        let page = match start {
-            Some(s) => s
-                .parse::<usize>()
-                .map_err(|e| LedgerError::Internal(e.to_string()))?,
-            None => 1,
-        };
-
-        let pagination = Pagination::new(blockfrost::Order::Asc, page, max_items as usize);
-        let query = self
-            .client
-            .addresses_utxos(&address, pagination)
-            .await
-            .map_err(|err| LedgerError::Upstream(err.to_string()))?;
-
-        let mut utxos = vec![];
-        let mut txs = TxDict::new(&mut self.client);
-        for utxo in query {
-            let raw_tx_hash =
-                hex::decode(&utxo.tx_hash).map_err(|e| LedgerError::Upstream(e.to_string()))?;
-            let ref_ = TxoRef {
-                tx_hash: raw_tx_hash,
-                tx_index: utxo.tx_index as u32,
-            };
-
-            let tx_bytes = txs.get_bytes(utxo.tx_hash.clone()).await?;
-            let tx = TxDict::decode_tx(tx_bytes)?;
-            let Some(txo) = tx.output_at(utxo.tx_index as usize) else {
-                return Err(LedgerError::NotFound(ref_));
-            };
-
-            utxos.push(Utxo {
-                ref_,
-                body: txo.encode(),
-            });
-        }
-
-        let next_token = if utxos.len() == max_items as usize {
-            Some((page + 1).to_string())
-        } else {
-            None
-        };
-
-        Ok(UtxoPage { utxos, next_token })
+            min_fee_script_ref_cost_per_byte: raw_params
+                .min_fee_ref_script_cost_per_byte
+                .map(f64_to_rational),
+            pool_voting_thresholds: voting_thresholds([
+                raw_params.pvt_motion_no_confidence,
+                raw_params.pvt_committee_normal,
+                raw_params.pvt_committee_no_confidence,
+                raw_params.pvt_hard_fork_initiation,
+                raw_params.pvt_p_p_security_group,
+            ]),
+            drep_voting_thresholds: voting_thresholds([
+                raw_params.dvt_motion_no_confidence,
+                raw_params.dvt_committee_normal,
+                raw_params.dvt_committee_no_confidence,
+                raw_params.dvt_update_to_constitution,
+                raw_params.dvt_hard_fork_initiation,
+                raw_params.dvt_p_p_network_group,
+                raw_params.dvt_p_p_economic_group,
+                raw_params.dvt_p_p_technical_group,
+                raw_params.dvt_p_p_gov_group,
+                raw_params.dvt_treasury_withdrawal,
+            ]),
+            min_committee_size: string_to_num(raw_params.committee_min_size),
+            committee_term_limit: string_to_num(raw_params.committee_max_term_length),
+            governance_action_validity_period: string_to_num(raw_params.gov_action_lifetime),
+            governance_action_deposit: string_to_num(raw_params.gov_action_deposit),
+            drep_deposit: string_to_num(raw_params.drep_deposit),
+            drep_inactivity_period: string_to_num(raw_params.drep_activity),
+        })
     }
 }
 
@@ -206,6 +224,10 @@ impl<'a> TxDict<'a> {
     }
 }
 
+fn string_to_num<T: FromStr + Default>(string: Option<String>) -> T {
+    string.and_then(|v| v.parse().ok()).unwrap_or_default()
+}
+
 fn f64_to_rational(value: f64) -> RationalNumber {
     let ratio = Rational32::from_f64(value).unwrap();
     RationalNumber {
@@ -218,5 +240,16 @@ fn ex_units(step: Option<String>, mem: Option<String>) -> Option<ExUnits> {
     Some(ExUnits {
         steps: step?.parse().ok()?,
         memory: mem?.parse().ok()?,
+    })
+}
+
+fn voting_thresholds(
+    thresholds: impl IntoIterator<Item = Option<f64>>,
+) -> Option<VotingThresholds> {
+    Some(VotingThresholds {
+        thresholds: thresholds
+            .into_iter()
+            .map(|t| t.map(f64_to_rational))
+            .collect::<Option<Vec<_>>>()?,
     })
 }

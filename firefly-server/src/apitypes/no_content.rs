@@ -1,4 +1,4 @@
-use aide::{openapi, OperationOutput};
+use aide::{OperationOutput, openapi};
 use axum::{body::Body, http::Response, response::IntoResponse};
 use reqwest::StatusCode;
 

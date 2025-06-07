@@ -1,8 +1,14 @@
 [package]
 name = "firefly-balius"
-version = "0.1.0"
-edition = "2021"
-repository = "https://github.com/blockfrost/firefly-cardano"
+version = "0.4.2"
+description = "Helpers to write contracts for the FireFly Cardano connector"
+license-file.workspace = true
+publish = false
+edition = "2024"
+repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
-balius-sdk = { git = "https://github.com/txpipe/balius.git", rev = "cf2791d" }
+balius-sdk = "0.3.4"
+hex = "0.4"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

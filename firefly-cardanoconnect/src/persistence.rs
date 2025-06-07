@@ -8,7 +8,7 @@ use serde::Deserialize;
 use sqlite::{SqliteConfig, SqlitePersistence};
 
 use crate::{
-    operations::{Operation, OperationId},
+    operations::{Operation, OperationId, OperationUpdate, OperationUpdateId},
     streams::{BlockRecord, Listener, ListenerId, Stream, StreamCheckpoint, StreamId},
 };
 
@@ -62,8 +62,14 @@ pub trait Persistence: Sync + Send {
         new_records: Vec<BlockRecord>,
     ) -> Result<()>;
 
-    async fn write_operation(&self, op: &Operation) -> ApiResult<()>;
+    async fn write_operation(&self, op: &Operation) -> ApiResult<OperationUpdateId>;
     async fn read_operation(&self, id: &OperationId) -> ApiResult<Option<Operation>>;
+    async fn list_operation_updates(
+        &self,
+        after: Option<&OperationUpdateId>,
+        limit: usize,
+    ) -> Result<Vec<OperationUpdate>>;
+    async fn latest_operation_update(&self) -> Result<Option<OperationUpdateId>>;
 }
 
 pub async fn init(config: &PersistenceConfig) -> Result<Arc<dyn Persistence>> {

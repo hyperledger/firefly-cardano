@@ -1,8 +1,8 @@
-use anyhow::{bail, Result};
+use anyhow::{Result, bail};
 use clap::Parser;
 use firefly::{
-    FireflyCardanoClient, FireflyWebSocketEventBatch, FireflyWebSocketRequest, ListenerFilter,
-    ListenerSettings, ListenerType, StreamSettings,
+    FireflyCardanoClient, FireflyWebSocketEvent, FireflyWebSocketEventBatch,
+    FireflyWebSocketRequest, ListenerFilter, ListenerSettings, ListenerType, StreamSettings,
 };
 use futures::{SinkExt, StreamExt};
 
@@ -18,8 +18,6 @@ struct Args {
     amount: u64,
     #[arg(long, default_value = "http://localhost:5018")]
     firefly_cardano_url: String,
-    #[arg(long, default_value = "4")]
-    rollback_horizon: u64,
 }
 
 async fn create_or_get_stream(firefly: &FireflyCardanoClient, name: &str) -> Result<String> {
@@ -69,6 +67,8 @@ async fn create_listener(
         .await
 }
 
+const CONTRACT_ADDRESS: &str = "simple-tx@0.1.0";
+
 #[tokio::main]
 async fn main() -> Result<()> {
     let args = Args::parse();
@@ -83,7 +83,7 @@ async fn main() -> Result<()> {
     let Some(txid) = firefly
         .invoke_contract(
             &args.addr_from,
-            "simple-tx",
+            CONTRACT_ADDRESS,
             "send_ada",
             [
                 ("fromAddress", args.addr_from.clone().into()),
@@ -105,28 +105,32 @@ async fn main() -> Result<()> {
     clear_listeners(&firefly, &stream_id).await?;
 
     // from_block tells the stream which block to start listening from.
-    // It can be "earliest", "latest", or a kupo-style "slot.hash" string.
+    // It can be "oldest", "newest", or a kupo-style "slot.hash" string.
     let from_block = format!("{}.{}", tip.block_slot, tip.block_hash);
 
     // A "listener" represents a logical process consuming events from this stream.
     // Listeners use filters to listen for specific events.
-    // Here we create one listener just for our new transaction.
+    // Here we create a listener for each event we care about
     let tx_listener_id = create_listener(
         &firefly,
         &stream_id,
         &format!("listener-{txid}"),
         &from_block,
-        vec![ListenerFilter::TransactionId(txid.clone())],
-    )
-    .await?;
-
-    // Here we create another that listens to every transaction, so we can track the block height
-    let all_txs_listener_id = create_listener(
-        &firefly,
-        &stream_id,
-        "listener-all",
-        &from_block,
-        vec![ListenerFilter::TransactionId("any".into())],
+        vec![
+            // The contract emits specific events at different parts of the transaction lifecycle
+            ListenerFilter::Event {
+                contract: CONTRACT_ADDRESS.into(),
+                event_path: "TransactionAccepted(string)".into(),
+            },
+            ListenerFilter::Event {
+                contract: CONTRACT_ADDRESS.into(),
+                event_path: "TransactionRolledBack(string)".into(),
+            },
+            ListenerFilter::Event {
+                contract: CONTRACT_ADDRESS.into(),
+                event_path: "TransactionFinalized(string)".into(),
+            },
+        ],
     )
     .await?;
 
@@ -142,7 +146,6 @@ async fn main() -> Result<()> {
     .await?;
 
     println!("listening for events");
-    let mut block_height_when_final = None;
     while let Some(msg) = ws.next().await {
         let message = msg?;
         let batch: FireflyWebSocketEventBatch = match message.try_into() {
@@ -154,24 +157,42 @@ async fn main() -> Result<()> {
         };
         println!("received message batch {batch:?}");
         for event in batch.events {
-            if event.listener_id == tx_listener_id {
-                assert_eq!(event.transaction_hash, txid);
-                if event.signature.starts_with("TransactionAccepted") {
-                    println!("our transaction was accepted in block #{}! waiting for {} more blocks to be sure it won't roll back...", event.block_number, args.rollback_horizon);
-                    block_height_when_final = Some(event.block_number + args.rollback_horizon);
-                }
-                if event.signature.starts_with("TransactionRolledBack") {
-                    bail!("our transaction was rolled back...");
-                }
+            let FireflyWebSocketEvent::ContractEvent(event) = event else {
+                println!("ignoring {event:?}");
+                continue;
+            };
+            if event.listener_id != tx_listener_id {
+                continue;
+            }
+
+            if event.signature.starts_with("TransactionAccepted") && event.transaction_hash == txid
+            {
+                println!(
+                    "our transaction was accepted in block #{}! waiting for the contract to decide it was finalized",
+                    event.block_number
+                );
+            }
+            if event.signature.starts_with("TransactionRolledBack")
+                && event.transaction_hash == txid
+            {
+                bail!("our transaction was rolled back...");
             }
             #[allow(clippy::collapsible_if)]
-            if event.listener_id == all_txs_listener_id {
-                if block_height_when_final.is_some_and(|h| event.block_number >= h) {
-                    println!(
-                        "alright it's been long enough, this transaction is probably final by now"
-                    );
-                    return Ok(());
+            if event.signature.starts_with("TransactionFinalized") {
+                if event
+                    .data
+                    .as_object()
+                    .and_then(|o| o.get("transactionId"))
+                    .and_then(|id| id.as_str())
+                    .is_none_or(|id| id != txid)
+                {
+                    continue;
                 }
+                println!(
+                    "as of block {}, our transaction is finalized!",
+                    event.block_number
+                );
+                return Ok(());
             }
         }
         ws.send(

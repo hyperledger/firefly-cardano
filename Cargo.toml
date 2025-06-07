@@ -1,14 +1,21 @@
 [workspace]
 
+package.license-file = "LICENSE"
+
 members = [
     "firefly-balius",
     "firefly-cardanoconnect",
     "firefly-cardanosigner",
     "firefly-server",
     "scripts/demo",
+    "scripts/deploy",
     "scripts/deploy-contract",
+    "scripts/generate-key",
 ]
 
 exclude = ["wasm"]
 
 resolver = "2"
+
+[workspace.metadata.release]
+tag = false

@@ -3,8 +3,8 @@ use std::path::PathBuf;
 use anyhow::Result;
 use convert_case::{Case, Casing as _};
 use figment::{
-    providers::{Data, Env, Format, Yaml},
     Figment,
+    providers::{Data, Env, Format, Yaml},
 };
 use itertools::Itertools;
 use serde::Deserialize;

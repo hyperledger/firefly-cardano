@@ -1,21 +1,20 @@
 use std::{path::PathBuf, sync::Arc};
 
 use aide::axum::{
-    routing::{get, post},
     ApiRouter,
+    routing::{get, post},
 };
 use anyhow::Result;
 use blockchain::BlockchainClient;
-use blockfrost::BlockfrostClient;
 use clap::Parser;
-use config::{load_config, CardanoConnectConfig};
+use config::{CardanoConnectConfig, load_config};
 use contracts::ContractManager;
 use firefly_server::instrumentation;
 use operations::OperationsManager;
 use routes::{
     chain::get_chain_tip,
     health::health,
-    operations::{deploy_contract, get_operation_status, invoke_contract},
+    operations::{deploy_contract, get_operation_status, invoke_contract, query_contract},
     streams::{
         create_listener, create_stream, delete_listener, delete_stream, get_listener, get_stream,
         list_listeners, list_streams, update_stream,
@@ -25,11 +24,10 @@ use routes::{
 };
 use signer::CardanoSigner;
 use streams::StreamManager;
-use tokio::sync::broadcast;
+use tokio::sync::watch;
 use tracing::instrument;
 
 mod blockchain;
-mod blockfrost;
 mod config;
 mod contracts;
 mod operations;
@@ -58,32 +56,26 @@ struct AppState {
 
 #[instrument(err(Debug))]
 async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<AppState> {
-    let blockfrost = config
-        .connector
-        .blockchain
-        .blockfrost_key
-        .as_ref()
-        .map(|k| BlockfrostClient::new(&k.0));
     let persistence = persistence::init(&config.persistence).await?;
     let signer = Arc::new(CardanoSigner::new(config)?);
     let blockchain = if mock_data {
         Arc::new(BlockchainClient::mock().await)
     } else {
-        Arc::new(BlockchainClient::new(config, blockfrost.clone()).await?)
+        Arc::new(BlockchainClient::new(config).await?)
     };
     let contracts = if let Some(contracts) = &config.contracts {
-        Arc::new(ContractManager::new(contracts, blockfrost).await?)
+        Arc::new(ContractManager::new(contracts, &blockchain).await?)
     } else {
         Arc::new(ContractManager::none())
     };
 
-    let operation_sink = broadcast::Sender::new(1024);
+    let operation_update_sink = watch::Sender::new(persistence.latest_operation_update().await?);
     let operations = Arc::new(OperationsManager::new(
         blockchain.clone(),
-        contracts,
+        contracts.clone(),
         persistence.clone(),
         signer.clone(),
-        operation_sink.clone(),
+        operation_update_sink.clone(),
     ));
 
     let state = AppState {
@@ -91,7 +83,7 @@ async fn init_state(config: &CardanoConnectConfig, mock_data: bool) -> Result<Ap
         operations,
         signer,
         stream_manager: Arc::new(
-            StreamManager::new(persistence, blockchain, operation_sink).await?,
+            StreamManager::new(blockchain, contracts, persistence, operation_update_sink).await?,
         ),
     };
 
@@ -112,6 +104,7 @@ async fn main() -> Result<()> {
         .api_route("/health", get(health))
         .api_route("/contracts/deploy", post(deploy_contract))
         .api_route("/contracts/invoke", post(invoke_contract))
+        .api_route("/contracts/query", post(query_contract))
         .api_route("/transactions", post(submit_transaction))
         .api_route("/transactions/{id}", get(get_operation_status))
         .api_route("/eventstreams", post(create_stream).get(list_streams))

@@ -1,6 +1,6 @@
 use std::fs;
 
-use anyhow::{anyhow, bail, Context, Result};
+use anyhow::{Context, Result, anyhow, bail};
 use bech32::{Bech32, Hrp};
 use pallas_addresses::Address;
 use pallas_crypto::{
@@ -8,10 +8,9 @@ use pallas_crypto::{
     key::ed25519::{SecretKey, SecretKeyExtended},
 };
 use pallas_primitives::conway::PlutusData::BoundedBytes;
-use pallas_wallet::PrivateKey;
 use serde::Deserialize;
 
-use crate::config::FileWalletConfig;
+use crate::{config::FileWalletConfig, private_key::PrivateKey};
 
 #[derive(Default)]
 pub struct KeyStore {

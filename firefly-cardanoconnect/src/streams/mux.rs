@@ -1,39 +1,46 @@
 use std::{cmp::Ordering, collections::BTreeMap, sync::Arc, time::Duration};
 
-use anyhow::{bail, Context, Result};
+use anyhow::{Context, Result, bail};
 use dashmap::{DashMap, Entry};
 use firefly_server::apitypes::ToAnyhow;
-use futures::{stream::FuturesUnordered, StreamExt};
+use futures::{StreamExt, stream::FuturesUnordered};
 use tokio::{
     select,
-    sync::{broadcast, mpsc, oneshot},
+    sync::{mpsc, oneshot, watch},
     time,
 };
 use tracing::warn;
 
-use crate::{blockchain::BlockchainClient, operations::Operation, persistence::Persistence};
+use crate::{
+    blockchain::BlockchainClient,
+    contracts::{ContractListener, ContractManager},
+    operations::{Operation, OperationUpdateId},
+    persistence::Persistence,
+};
 
 use super::{
+    BlockReference, ContractEvent, EventReference, Listener, ListenerFilter, ListenerId, Stream,
+    StreamCheckpoint, StreamId,
     blockchain::{ChainListener, DataSource},
     events::ChainEventStream,
-    BlockReference, Event, EventReference, Listener, ListenerFilter, ListenerId, Stream,
-    StreamCheckpoint, StreamId,
 };
 
 #[derive(Clone)]
 pub struct Multiplexer {
     dispatchers: Arc<DashMap<StreamId, StreamDispatcher>>,
     stream_ids_by_topic: Arc<DashMap<String, StreamId>>,
-    operation_sink: broadcast::Sender<Operation>,
+    operation_update_sink: watch::Sender<Option<OperationUpdateId>>,
+    contracts: Arc<ContractManager>,
     persistence: Arc<dyn Persistence>,
     data_source: Arc<DataSource>,
 }
 
 impl Multiplexer {
     pub async fn new(
-        persistence: Arc<dyn Persistence>,
         blockchain: Arc<BlockchainClient>,
-        operation_sink: broadcast::Sender<Operation>,
+        contracts: Arc<ContractManager>,
+        persistence: Arc<dyn Persistence>,
+        operation_update_sink: watch::Sender<Option<OperationUpdateId>>,
     ) -> Result<Self> {
         let data_source = Arc::new(DataSource::new(blockchain, persistence.clone()));
 
@@ -45,9 +52,10 @@ impl Multiplexer {
 
             let dispatcher = StreamDispatcher::new(
                 &stream,
+                contracts.clone(),
                 persistence.clone(),
                 data_source.clone(),
-                operation_sink.clone(),
+                operation_update_sink.subscribe(),
             )
             .await?;
             dispatchers.insert(stream.id, dispatcher);
@@ -55,7 +63,8 @@ impl Multiplexer {
         Ok(Self {
             dispatchers: Arc::new(dispatchers),
             stream_ids_by_topic: Arc::new(stream_ids_by_topic),
-            operation_sink,
+            operation_update_sink,
+            contracts,
             persistence,
             data_source,
         })
@@ -73,9 +82,10 @@ impl Multiplexer {
                 entry.insert(
                     StreamDispatcher::new(
                         stream,
+                        self.contracts.clone(),
                         self.persistence.clone(),
                         self.data_source.clone(),
-                        self.operation_sink.clone(),
+                        self.operation_update_sink.subscribe(),
                     )
                     .await?,
                 );
@@ -97,6 +107,7 @@ impl Multiplexer {
             .data_source
             .listen(listener.id.clone(), from_block.as_ref());
         let block = from_block.unwrap_or(sync.get_tip().await?);
+        let contract = self.contracts.listen(listener).await;
         let hwm = EventReference {
             block,
             rollback: false,
@@ -107,7 +118,7 @@ impl Multiplexer {
         let Some(dispatcher) = self.dispatchers.get(&listener.stream_id) else {
             bail!("new listener created for stream we haven't heard of");
         };
-        dispatcher.add_listener(listener, sync, hwm).await
+        dispatcher.add_listener(listener, sync, contract, hwm).await
     }
 
     pub async fn handle_listener_delete(
@@ -135,15 +146,15 @@ impl Multiplexer {
 
 struct StreamDispatcher {
     state_change_sink: mpsc::Sender<StreamDispatcherStateChange>,
-    operation_sink: broadcast::Sender<Operation>,
 }
 
 impl StreamDispatcher {
     pub async fn new(
         stream: &Stream,
+        contracts: Arc<ContractManager>,
         persistence: Arc<dyn Persistence>,
         data_source: Arc<DataSource>,
-        operation_sink: broadcast::Sender<Operation>,
+        operation_update_source: watch::Receiver<Option<OperationUpdateId>>,
     ) -> Result<Self> {
         let (state_change_sink, state_change_source) = mpsc::channel(16);
 
@@ -152,6 +163,9 @@ impl StreamDispatcher {
             .await
             .to_anyhow()?;
         let checkpoint = persistence.read_checkpoint(&stream.id).await.to_anyhow()?;
+        let last_operation_id = checkpoint
+            .as_ref()
+            .and_then(|c| c.last_operation_id.clone());
         let old_hwms = checkpoint.map(|cp| cp.listeners).unwrap_or_default();
 
         let stream = stream.clone();
@@ -161,13 +175,19 @@ impl StreamDispatcher {
             for listener in all_listeners {
                 let hwm = old_hwms.get(&listener.id).cloned().unwrap_or_default();
                 let sync = data_source.listen(listener.id.clone(), Some(&hwm.block));
+                let contract = contracts.listen(&listener).await;
 
                 hwms.insert(listener.id.clone(), hwm);
                 listeners.insert(
                     listener.id.clone(),
                     ListenerState {
                         id: listener.id.clone(),
-                        stream: ChainEventStream::new(listener.id, listener.filters, sync),
+                        stream: ChainEventStream::new(
+                            listener.id,
+                            listener.filters,
+                            sync,
+                            contract,
+                        ),
                     },
                 );
             }
@@ -176,17 +196,17 @@ impl StreamDispatcher {
                 stream_id: stream.id,
                 batch_size: stream.batch_size,
                 batch_timeout: stream.batch_timeout,
-                batch_number: 0,
+                batch_number: 1,
                 listeners,
+                last_operation_id,
                 hwms,
                 persistence,
             };
-            worker.run(state_change_source).await;
+            worker
+                .run(state_change_source, operation_update_source)
+                .await;
         });
-        Ok(Self {
-            state_change_sink,
-            operation_sink,
-        })
+        Ok(Self { state_change_sink })
     }
 
     pub async fn update_settings(&self, stream: &Stream) -> Result<()> {
@@ -205,6 +225,7 @@ impl StreamDispatcher {
         &self,
         listener: &Listener,
         sync: ChainListener,
+        contract: ContractListener,
         hwm: EventReference,
     ) -> Result<()> {
         self.state_change_sink
@@ -212,6 +233,7 @@ impl StreamDispatcher {
                 listener.id.clone(),
                 listener.filters.clone(),
                 sync,
+                contract,
                 hwm,
             ))
             .await
@@ -235,10 +257,8 @@ impl StreamDispatcher {
             .send(StreamDispatcherStateChange::NewBatchSink(batch_sink))
             .await
             .context("could not subscribe to stream")?;
-        let operation_source = self.operation_sink.subscribe();
         Ok(StreamSubscription {
             batch_receiver: batch_source,
-            operation_receiver: operation_source,
         })
     }
 }
@@ -249,26 +269,31 @@ struct StreamDispatcherWorker {
     batch_timeout: Duration,
     batch_number: u64,
     listeners: BTreeMap<ListenerId, ListenerState>,
+    last_operation_id: Option<OperationUpdateId>,
     hwms: BTreeMap<ListenerId, EventReference>,
     persistence: Arc<dyn Persistence>,
 }
 
 impl StreamDispatcherWorker {
-    async fn run(mut self, mut state_change_source: mpsc::Receiver<StreamDispatcherStateChange>) {
+    async fn run(
+        mut self,
+        mut state_change_source: mpsc::Receiver<StreamDispatcherStateChange>,
+        mut operation_update_source: watch::Receiver<Option<OperationUpdateId>>,
+    ) {
         let mut batch_sink = None;
         loop {
-            let (batch, ack_rx, hwms) = select! {
-                batch = self.build_batch(), if batch_sink.is_some() && !self.listeners.is_empty() => batch,
+            let (batch, ack_rx, last_op_id, hwms) = select! {
+                batch = self.build_batch(&mut operation_update_source), if batch_sink.is_some() && !self.listeners.is_empty() => batch,
                 Some(change) = state_change_source.recv() => {
                     match change {
                         StreamDispatcherStateChange::NewSettings(settings) => {
                             self.batch_size = settings.batch_size;
                             self.batch_timeout = settings.batch_timeout;
                         }
-                        StreamDispatcherStateChange::NewListener(listener_id, filters, sync, hwm) => {
+                        StreamDispatcherStateChange::NewListener(listener_id, filters, sync, contract, hwm) => {
                             self.listeners.insert(listener_id.clone(), ListenerState {
                                 id: listener_id.clone(),
-                                stream: ChainEventStream::new(listener_id.clone(), filters.clone(), sync),
+                                stream: ChainEventStream::new(listener_id.clone(), filters, sync, contract),
                             });
                             self.hwms.insert(listener_id, hwm);
                         }
@@ -294,10 +319,12 @@ impl StreamDispatcherWorker {
             }
             match ack_rx.await {
                 Ok(()) => {
+                    self.last_operation_id = last_op_id;
                     self.hwms = hwms;
                     self.persistence
                         .write_checkpoint(&StreamCheckpoint {
                             stream_id: self.stream_id.clone(),
+                            last_operation_id: self.last_operation_id.clone(),
                             listeners: self.hwms.clone(),
                         })
                         .await
@@ -313,11 +340,14 @@ impl StreamDispatcherWorker {
 
     async fn build_batch(
         &mut self,
+        operation_update_source: &mut watch::Receiver<Option<OperationUpdateId>>,
     ) -> (
         Batch,
         oneshot::Receiver<()>,
+        Option<OperationUpdateId>,
         BTreeMap<ListenerId, EventReference>,
     ) {
+        let mut last_op_id = self.last_operation_id.clone();
         let mut hwms = self.hwms.clone();
 
         loop {
@@ -327,7 +357,7 @@ impl StreamDispatcherWorker {
             let mut events = vec![];
             select! {
                 () = &mut batch_timeout_at => {}
-                () = self.collect_events(&mut hwms, &mut events) => {}
+                () = self.collect_events(&mut last_op_id, &mut hwms, &mut events, operation_update_source) => {}
             }
 
             if events.is_empty() {
@@ -340,14 +370,55 @@ impl StreamDispatcherWorker {
                 events,
                 ack_tx,
             };
-            return (batch, ack_rx, hwms);
+            return (batch, ack_rx, last_op_id, hwms);
         }
     }
 
     async fn collect_events(
         &mut self,
+        last_op: &mut Option<OperationUpdateId>,
         hwms: &mut BTreeMap<ListenerId, EventReference>,
-        events: &mut Vec<Event>,
+        events: &mut Vec<BatchEvent>,
+        operation_update_source: &mut watch::Receiver<Option<OperationUpdateId>>,
+    ) {
+        if *operation_update_source.borrow() > *last_op {
+            self.collect_operation_events(last_op, events).await;
+        }
+        while events.len() < self.batch_size {
+            select! {
+                _ = self.collect_contract_events(hwms, events) => {}
+                Ok(()) = operation_update_source.changed() => {
+                    self.collect_operation_events(last_op, events).await;
+                }
+            }
+        }
+    }
+
+    async fn collect_operation_events(
+        &self,
+        last_op: &mut Option<OperationUpdateId>,
+        events: &mut Vec<BatchEvent>,
+    ) {
+        let Ok(updates) = self
+            .persistence
+            .list_operation_updates(last_op.as_ref(), self.batch_size - events.len())
+            .await
+        else {
+            return;
+        };
+        for update in updates {
+            events.push(BatchEvent::Receipt(update.operation));
+            last_op.replace(update.update_id);
+            if events.len() >= self.batch_size {
+                break;
+            }
+        }
+    }
+
+    async fn collect_contract_events(
+        &mut self,
+        hwms: &mut BTreeMap<ListenerId, EventReference>,
+        events: &mut Vec<BatchEvent>,
     ) {
         assert!(
             !self.listeners.is_empty(),
@@ -358,15 +429,18 @@ impl StreamDispatcherWorker {
             let mut next_event_future = FuturesUnordered::new();
             for listener in self.listeners.values_mut() {
                 let hwm = hwms.get(&listener.id).unwrap();
-                if let Some((event_ref, event)) = listener.stream.try_get_next_event(hwm) {
-                    // This listener already has an event waiting to surface.
-                    new_events.push((listener.id.clone(), event_ref, event));
-                } else {
-                    // This listener must already be at the tip. We might have to wait a while for more events.
-                    next_event_future.push(async move {
-                        let (event_ref, event) = listener.stream.wait_for_next_event(hwm).await;
-                        (listener.id.clone(), event_ref, event)
-                    });
+                match listener.stream.try_get_next_event(hwm).await {
+                    Some((event_ref, event)) => {
+                        // This listener already has an event waiting to surface.
+                        new_events.push((listener.id.clone(), event_ref, event));
+                    }
+                    _ => {
+                        // This listener must already be at the tip. We might have to wait a while for more events.
+                        next_event_future.push(async move {
+                            let (event_ref, event) = listener.stream.wait_for_next_event(hwm).await;
+                            (listener.id.clone(), event_ref, event)
+                        });
+                    }
                 }
             }
             // If any listeners already had events waiting for us, choose the highest-priority event
@@ -381,7 +455,7 @@ impl StreamDispatcherWorker {
             };
             drop(next_event_future);
             hwms.insert(listener_id, event_ref);
-            events.push(new_event);
+            events.push(BatchEvent::ContractEvent(new_event));
         }
     }
 
@@ -410,18 +484,19 @@ impl StreamDispatcherWorker {
     }
 }
 
-#[derive(Debug)]
 struct ListenerState {
     id: ListenerId,
     stream: ChainEventStream,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum StreamDispatcherStateChange {
     NewSettings(StreamDispatcherSettings),
     NewListener(
         ListenerId,
         Vec<ListenerFilter>,
         ChainListener,
+        ContractListener,
         EventReference,
     ),
     RemovedListener(ListenerId),
@@ -433,9 +508,14 @@ struct StreamDispatcherSettings {
     batch_timeout: Duration,
 }
 
+pub enum BatchEvent {
+    ContractEvent(ContractEvent),
+    Receipt(Operation),
+}
+
 pub struct Batch {
     pub batch_number: u64,
-    pub events: Vec<Event>,
+    pub events: Vec<BatchEvent>,
     ack_tx: oneshot::Sender<()>,
 }
 impl Batch {
@@ -446,21 +526,10 @@ impl Batch {
 
 pub struct StreamSubscription {
     batch_receiver: mpsc::Receiver<Batch>,
-    operation_receiver: broadcast::Receiver<Operation>,
 }
 
 impl StreamSubscription {
-    pub async fn recv(&mut self) -> Option<StreamMessage> {
-        select! {
-            biased;
-            Ok(op) = self.operation_receiver.recv() => Some(StreamMessage::Operation(op)),
-            Some(batch) = self.batch_receiver.recv() => Some(StreamMessage::Batch(batch)),
-            else => None
-        }
+    pub async fn recv(&mut self) -> Option<Batch> {
+        self.batch_receiver.recv().await
     }
-}
-
-pub enum StreamMessage {
-    Batch(Batch),
-    Operation(Operation),
 }

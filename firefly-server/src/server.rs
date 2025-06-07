@@ -1,7 +1,7 @@
 use aide::{
-    axum::{routing::get, ApiRouter, IntoApiResponse},
-    openapi::{Info, OpenApi},
     NoApi,
+    axum::{ApiRouter, IntoApiResponse, routing::get},
+    openapi::{Info, OpenApi},
 };
 use anyhow::Result;
 use axum::{Extension, Json, Router};
