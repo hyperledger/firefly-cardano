@@ -1,6 +1,6 @@
 services:
   firefly-core:
-    image: ghcr.io/gytis-ivaskevicius/firefly-core:latest
+    image: ghcr.io/hyperledger/firefly:v1.3.3-20250523-823
     volumes:
       - ./firefly-core.yaml:/etc/firefly/firefly.core.yml:ro
     ports:
