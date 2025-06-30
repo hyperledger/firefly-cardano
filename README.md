@@ -47,7 +47,7 @@ docker compose watch
   ```bash
     cargo run --bin firefly-cardano-generate-key -- --wallet-dir infra/wallet --testnet
 
-    # or if you have installed just...
+    # or if you have installed just... check https://github.com/casey/just?tab=readme-ov-file#installation
     just generate-key
   ```
 
