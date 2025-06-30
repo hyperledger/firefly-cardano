@@ -1,17 +1,17 @@
 <img src="https://upload.wikimedia.org/wikipedia/commons/f/f8/Cardano.svg" width="250" align="right" height="90">
 <!-- TODO: platform specific logo would be nice -->
 
-# Monorepo for the Hyperledger Firefly implementation for Cardano blockchain
+# Monorepo for the Hyperledger FireFly implementation for Cardano blockchain
 
 ## Introduction
 
-The Hyperledger Firefly monorepo for Cardano blockchain offers a unified repository containing all the code, documentation, and tools necessary for developing and deploying multi-enterprise blockchain applications on the Cardano network.
+The Hyperledger FireFly monorepo for Cardano blockchain offers a unified repository containing all the code, documentation, and tools necessary for developing and deploying multi-enterprise blockchain applications on the Cardano network.
 
 ## Configuration of components
 
-For the firefly connector config, see [config.md](firefly-cardanoconnect/config.md).
+For the FireFly Cardano Connector config, see [config.md](firefly-cardanoconnect/config.md).
 
-For the firefly signer config, see [config.md](firefly-cardanosigner/config.md).
+For the FireFly Cardano Signer config, see [config.md](firefly-cardanosigner/config.md).
 
 ## Getting started
 
@@ -34,7 +34,7 @@ docker compose -f infra/docker-compose.node.yaml up --build -d
 docker compose watch
 ```
 
-### Demo application to showcase the Cardano Firefly connector
+### Demo application to showcase the Cardano FireFly connector
 
 - Export your blockfrost key:
 
