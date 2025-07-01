@@ -8,16 +8,16 @@ edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
-aide = { version = "0.14", features = ["axum", "axum-json"] }
+aide = { version = "0.15", features = ["axum", "axum-json"] }
 axum = "0.8"
 anyhow = "1"
 convert_case = "0.8"
-duration-str = "0.16"
+duration-str = "0.17"
 figment = { version = "0.10", features = ["yaml", "env"] }
 home = "0.5"
 itertools = "0.14"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-schemars = "0.8"
+schemars = "0.9"
 serde = "1"
 serde_json = "1"
 tokio = "1"

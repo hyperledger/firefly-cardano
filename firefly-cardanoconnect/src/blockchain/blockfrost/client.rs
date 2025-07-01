@@ -1,8 +1,9 @@
 use anyhow::Result;
 pub use blockfrost::Pagination;
 use blockfrost::{BlockFrostSettings, BlockfrostAPI, BlockfrostError, BlockfrostResult};
-pub use blockfrost_openapi::models::{
-    AddressUtxoContentInner, BlockContent, EpochParamContent, TxContentCbor,
+use blockfrost_openapi::models::{
+    address_utxo_content_inner::AddressUtxoContentInner, block_content::BlockContent,
+    epoch_param_content::EpochParamContent, tx_content_cbor::TxContentCbor,
 };
 
 #[derive(Debug, Clone)]

@@ -8,7 +8,7 @@ edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
-aide = { version = "0.14", features = ["axum", "axum-json", "axum-query"] }
+aide = { version = "0.15", features = ["axum", "axum-json", "axum-query"] }
 anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["macros", "ws"] }
@@ -34,12 +34,12 @@ rand = "0.9"
 rand_chacha = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 refinery = { version = "0.8", features = ["rusqlite"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
-schemars = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+schemars = "0.9"
 serde = "1"
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-tokio-rusqlite = { version = "0.5" }
+tokio-rusqlite = { version = "0.6" }
 tracing = "0.1"
 ulid = "1"
 utxorpc-spec = "0.15"
