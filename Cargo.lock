@@ -503,7 +503,7 @@ dependencies = [
 [[package]]
 name = "blockfrost"
 version = "1.0.5"
-source = "git+https://github.com/SupernaviX/blockfrost-rust.git?rev=cfa7a5e#cfa7a5ec8fad0aee4c702f29075863fe728f4f89"
+source = "git+https://github.com/blockfrost/blockfrost-rust.git?rev=a19d4c5#a19d4c5d76c252a30a35ecebf993b4a5ee8cefd3"
 dependencies = [
  "blockfrost-openapi",
  "futures",
