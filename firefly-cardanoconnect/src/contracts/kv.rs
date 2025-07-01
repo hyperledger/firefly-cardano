@@ -2,42 +2,40 @@ use std::path::Path;
 
 use anyhow::Result;
 use async_trait::async_trait;
-use balius_runtime::kv::{CustomKv, KvError, Payload};
-use serde::Deserialize;
+use balius_runtime::kv::{KvError, KvProvider, Payload};
 use tokio_rusqlite::Connection;
 
 pub struct SqliteKv {
     conn: Connection,
-    table_name: String,
 }
 
 impl SqliteKv {
-    pub async fn new(path: &Path, contract: &str) -> Result<Self> {
+    pub async fn new(path: &Path) -> Result<Self> {
         let conn = Connection::open(path).await?;
-        let table_name = format!("kv_{}", hex::encode(contract));
+        Ok(Self { conn })
+    }
+
+    pub async fn init(&self, contract: &str) -> Result<()> {
+        let table_name = self.table_name(contract);
         let sql = format!(
             "CREATE TABLE IF NOT EXISTS \"{table_name}\" (
                 \"key\" TEXT NOT NULL PRIMARY KEY,
                 \"value\" BLOB NOT NULL
             )"
         );
-        conn.call_unwrap(move |c| c.execute(&sql, [])).await?;
-        Ok(Self { conn, table_name })
+        self.conn.call_unwrap(move |c| c.execute(&sql, [])).await?;
+        Ok(())
     }
 
-    pub async fn get<T: for<'a> Deserialize<'a>>(&mut self, key: String) -> Result<Option<T>> {
-        match self.get_value(key).await {
-            Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
-            Err(KvError::NotFound(_)) => Ok(None),
-            Err(e) => Err(e.into()),
-        }
+    fn table_name(&self, contract: &str) -> String {
+        format!("kv_{}", hex::encode(contract))
     }
 }
 
 #[async_trait]
-impl CustomKv for SqliteKv {
-    async fn get_value(&mut self, key: String) -> Result<Payload, KvError> {
-        let table = &self.table_name;
+impl KvProvider for SqliteKv {
+    async fn get_value(&mut self, worker_id: &str, key: String) -> Result<Payload, KvError> {
+        let table = self.table_name(worker_id);
         let sql = format!(
             "SELECT \"value\"
             FROM \"{table}\"
@@ -58,8 +56,13 @@ impl CustomKv for SqliteKv {
         }
     }
 
-    async fn set_value(&mut self, key: String, value: Payload) -> Result<(), KvError> {
-        let table = &self.table_name;
+    async fn set_value(
+        &mut self,
+        worker_id: &str,
+        key: String,
+        value: Payload,
+    ) -> Result<(), KvError> {
+        let table = self.table_name(worker_id);
         let sql = format!(
             "INSERT INTO \"{table}\" (\"key\", \"value\")
             VALUES (?1, ?2)
@@ -75,8 +78,12 @@ impl CustomKv for SqliteKv {
             .map_err(|err: rusqlite::Error| KvError::Upstream(err.to_string()))
     }
 
-    async fn list_values(&mut self, prefix: String) -> Result<Vec<String>, KvError> {
-        let table = &self.table_name;
+    async fn list_values(
+        &mut self,
+        worker_id: &str,
+        prefix: String,
+    ) -> Result<Vec<String>, KvError> {
+        let table = self.table_name(worker_id);
         let sql = format!(
             "SELECT \"key\"
             FROM \"{table}\"

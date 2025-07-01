@@ -7,7 +7,7 @@ use std::{
 use anyhow::{Context as _, Result, bail};
 use balius_runtime::{
     ChainPoint, Response, Runtime, Store,
-    kv::{CustomKv, Kv, KvError},
+    kv::{Kv, KvError, KvProvider},
     ledgers::Ledger,
 };
 use serde::{Deserialize, Serialize, de::DeserializeOwned};
@@ -19,10 +19,12 @@ use crate::streams::{BlockInfo, BlockReference};
 
 use super::{ContractsConfig, kv::SqliteKv, u5c::convert_block};
 
+type SharedKvProvider = Arc<Mutex<dyn KvProvider + Send + Sync + 'static>>;
+
 #[derive(Clone)]
 pub struct ContractRuntime {
     contract: String,
-    kv: Option<Arc<Mutex<SqliteKv>>>,
+    kv: Option<SharedKvProvider>,
     tx: mpsc::UnboundedSender<ContractRuntimeCommand>,
 }
 
@@ -37,10 +39,16 @@ impl ContractRuntime {
             wasm_path: c.components_path.join(format!("{contract}.wasm")),
             cache_size: c.cache_size,
         });
-        let kv = if let Some(config) = config {
+        let kv: Option<SharedKvProvider> = if let Some(config) = config {
             let sqlite_path = config.stores_path.join("kv.sqlite3");
-            match SqliteKv::new(&sqlite_path, contract).await {
-                Ok(kv) => Some(Arc::new(Mutex::new(kv))),
+            match SqliteKv::new(&sqlite_path).await {
+                Ok(kv) => match kv.init(contract).await {
+                    Ok(()) => Some(Arc::new(Mutex::new(kv))),
+                    Err(error) => {
+                        warn!("could not initialize sqlite db: {error:#}");
+                        None
+                    }
+                },
                 Err(error) => {
                     warn!("could not initialize sqlite db: {error:#}");
                     None
@@ -49,10 +57,7 @@ impl ContractRuntime {
         } else {
             None
         };
-        let mut worker = {
-            let kv = kv.clone().map(|kv| Kv::Custom(kv));
-            ContractRuntimeWorker::new(contract, runtime_config, ledger, kv)
-        };
+        let mut worker = ContractRuntimeWorker::new(contract, runtime_config, ledger, kv.clone());
         let (tx, rx) = mpsc::unbounded_channel();
         tokio::spawn(async move {
             worker.run(rx).await;
@@ -135,7 +140,11 @@ impl ContractRuntime {
             bail!("No contract directory configured");
         };
         let mut lock = kv.lock().await;
-        let raw_events: Vec<RawEvent> = lock.get(key).await?.unwrap_or_default();
+        let raw_events: Vec<RawEvent> = match lock.get_value(&self.contract, key).await {
+            Ok(bytes) => serde_json::from_slice(&bytes)?,
+            Err(KvError::NotFound(_)) => vec![],
+            Err(e) => return Err(e.into()),
+        };
         Ok(raw_events
             .into_iter()
             .map(|e| ContractEvent {
@@ -180,7 +189,7 @@ struct ContractRuntimeWorker {
     contract: String,
     config: Option<ContractRuntimeWorkerConfig>,
     ledger: Option<Ledger>,
-    kv: Option<Kv>,
+    kv: Option<SharedKvProvider>,
     runtime: Option<Runtime>,
     head: BlockReference,
 }
@@ -190,7 +199,7 @@ impl ContractRuntimeWorker {
         contract: &str,
         config: Option<ContractRuntimeWorkerConfig>,
         ledger: Option<Ledger>,
-        kv: Option<Kv>,
+        kv: Option<SharedKvProvider>,
     ) -> Self {
         Self {
             contract: contract.to_string(),
@@ -249,12 +258,12 @@ impl ContractRuntimeWorker {
             runtime_builder = runtime_builder.with_ledger(ledger);
         }
         if let Some(kv) = self.kv.clone() {
-            runtime_builder = runtime_builder.with_kv(kv);
+            runtime_builder = runtime_builder.with_kv(Kv::Custom(kv));
         }
 
-        let mut runtime = runtime_builder.build()?;
+        let runtime = runtime_builder.build()?;
         runtime
-            .register_worker(&self.contract, config.wasm_path, json!(null))
+            .register_worker_from_file(&self.contract, config.wasm_path, json!(null))
             .await?;
 
         let head = match runtime.chain_cursor().await {
@@ -461,7 +470,8 @@ impl ContractRuntimeWorker {
         let Some(kv) = &mut self.kv else {
             bail!("No KV store configured");
         };
-        match kv.get_value(key.as_ref().into()).await {
+        let mut lock = kv.lock().await;
+        match lock.get_value(&self.contract, key.as_ref().into()).await {
             Ok(bytes) => Ok(Some(serde_json::from_slice(&bytes)?)),
             Err(KvError::NotFound(_)) => Ok(None),
             Err(err) => Err(err.into()),
@@ -472,8 +482,13 @@ impl ContractRuntimeWorker {
         let Some(kv) = &mut self.kv else {
             bail!("No KV store configured");
         };
-        kv.set_value(key.as_ref().into(), serde_json::to_vec(&value)?)
-            .await?;
+        let mut lock = kv.lock().await;
+        lock.set_value(
+            &self.contract,
+            key.as_ref().into(),
+            serde_json::to_vec(&value)?,
+        )
+        .await?;
         Ok(())
     }
 }
