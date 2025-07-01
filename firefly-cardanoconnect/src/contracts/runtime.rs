@@ -17,7 +17,7 @@ use tracing::warn;
 
 use crate::streams::{BlockInfo, BlockReference};
 
-use super::{ContractsConfig, kv::SqliteKv, u5c::convert_block};
+use super::{ContractsConfig, kv::SqliteKv, u5c::UtxorpcAdapter};
 
 type SharedKvProvider = Arc<Mutex<dyn KvProvider + Send + Sync + 'static>>;
 
@@ -33,6 +33,7 @@ impl ContractRuntime {
         contract: &str,
         config: Option<&ContractsConfig>,
         ledger: Option<Ledger>,
+        u5c: Arc<UtxorpcAdapter>,
     ) -> Self {
         let runtime_config = config.map(|c| ContractRuntimeWorkerConfig {
             store_path: c.stores_path.join(format!("{contract}.redb")),
@@ -57,7 +58,8 @@ impl ContractRuntime {
         } else {
             None
         };
-        let mut worker = ContractRuntimeWorker::new(contract, runtime_config, ledger, kv.clone());
+        let mut worker =
+            ContractRuntimeWorker::new(contract, runtime_config, ledger, kv.clone(), u5c);
         let (tx, rx) = mpsc::unbounded_channel();
         tokio::spawn(async move {
             worker.run(rx).await;
@@ -190,6 +192,7 @@ struct ContractRuntimeWorker {
     config: Option<ContractRuntimeWorkerConfig>,
     ledger: Option<Ledger>,
     kv: Option<SharedKvProvider>,
+    u5c: Arc<UtxorpcAdapter>,
     runtime: Option<Runtime>,
     head: BlockReference,
 }
@@ -200,12 +203,14 @@ impl ContractRuntimeWorker {
         config: Option<ContractRuntimeWorkerConfig>,
         ledger: Option<Ledger>,
         kv: Option<SharedKvProvider>,
+        u5c: Arc<UtxorpcAdapter>,
     ) -> Self {
         Self {
             contract: contract.to_string(),
             config,
             ledger,
             kv,
+            u5c,
             runtime: None,
             head: BlockReference::Origin,
         }
@@ -342,9 +347,13 @@ impl ContractRuntimeWorker {
             // we've already advanced past this point
             return Ok(());
         }
-
-        let undo_blocks = rollbacks.iter().map(convert_block).collect();
-        let next_block = convert_block(block);
+        let (undo_blocks, next_block) = {
+            let u5c = &self.u5c;
+            let undo_blocks_fut =
+                futures::future::try_join_all(rollbacks.iter().map(|b| u5c.convert_block(b)));
+            let next_block_fut = u5c.convert_block(block);
+            tokio::try_join!(undo_blocks_fut, next_block_fut)?
+        };
         runtime
             .handle_chain(&undo_blocks, &next_block)
             .await

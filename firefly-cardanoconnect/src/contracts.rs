@@ -1,6 +1,7 @@
 use std::{
     collections::{BTreeSet, HashMap, hash_map},
     path::PathBuf,
+    sync::Arc,
 };
 
 use anyhow::{Result, bail};
@@ -15,6 +16,7 @@ use tracing::{error, warn};
 
 use crate::{
     blockchain::BlockchainClient,
+    contracts::u5c::UtxorpcAdapter,
     streams::{BlockInfo, BlockReference, Listener, ListenerFilter},
 };
 
@@ -33,6 +35,7 @@ pub struct ContractsConfig {
 pub struct ContractManager {
     config: Option<ContractsConfig>,
     ledger: Option<Ledger>,
+    u5c: Arc<UtxorpcAdapter>,
     runtimes: DashMap<String, ContractRuntime>,
 }
 
@@ -40,9 +43,12 @@ impl ContractManager {
     pub async fn new(config: &ContractsConfig, blockchain: &BlockchainClient) -> Result<Self> {
         fs::create_dir_all(&config.components_path).await?;
         fs::create_dir_all(&config.stores_path).await?;
+
+        let ledger = Some(blockchain.ledger().await);
         let manager = Self {
             config: Some(config.clone()),
-            ledger: Some(blockchain.ledger().await),
+            u5c: Arc::new(UtxorpcAdapter::new(ledger.clone())),
+            ledger,
             runtimes: DashMap::new(),
         };
 
@@ -63,6 +69,7 @@ impl ContractManager {
         Self {
             config: None,
             ledger: None,
+            u5c: Arc::new(UtxorpcAdapter::new(None)),
             runtimes: DashMap::new(),
         }
     }
@@ -133,7 +140,13 @@ impl ContractManager {
     async fn init_contract_runtime(&self, contract: &str) -> Result<()> {
         let runtime = match self.runtimes.entry(contract.to_string()) {
             Entry::Vacant(entry) => entry.insert(
-                ContractRuntime::new(contract, self.config.as_ref(), self.ledger.clone()).await,
+                ContractRuntime::new(
+                    contract,
+                    self.config.as_ref(),
+                    self.ledger.clone(),
+                    self.u5c.clone(),
+                )
+                .await,
             ),
             Entry::Occupied(entry) => entry.into_ref(),
         };
