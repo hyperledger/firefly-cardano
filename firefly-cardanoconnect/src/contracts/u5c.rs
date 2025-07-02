@@ -1,23 +1,15 @@
-use std::collections::HashMap;
-
 use crate::streams::BlockInfo;
 use anyhow::Result;
-use balius_runtime::ledgers::{CustomLedger, Ledger, TxoRef};
 use pallas_crypto::hash::Hasher;
 use pallas_primitives::conway;
 use pallas_traverse::ComputeHash as _;
-use tokio::sync::Mutex;
 use utxorpc_spec::utxorpc::v1alpha::cardano;
 
-pub struct UtxorpcAdapter {
-    ledger: Option<Mutex<Ledger>>,
-}
+pub struct UtxorpcAdapter {}
 
 impl UtxorpcAdapter {
-    pub fn new(ledger: Option<Ledger>) -> Self {
-        Self {
-            ledger: ledger.map(Mutex::new),
-        }
+    pub fn new() -> Self {
+        Self {}
     }
 
     pub async fn convert_block(&self, info: &BlockInfo) -> Result<balius_runtime::Block> {
@@ -26,47 +18,14 @@ impl UtxorpcAdapter {
             hash: hex::decode(&info.block_hash).unwrap().into(),
             height: info.block_height.unwrap_or_default(),
         };
-        let mut body = cardano::BlockBody {
+        let body = cardano::BlockBody {
             tx: info.transactions.iter().map(|tx| convert_tx(tx)).collect(),
         };
-        self.populate_tx_inputs(&mut body).await?;
         let block = cardano::Block {
             header: Some(header),
             body: Some(body),
         };
         Ok(balius_runtime::Block::Cardano(block))
-    }
-
-    async fn populate_tx_inputs(&self, body: &mut cardano::BlockBody) -> Result<()> {
-        let Some(ledger) = &self.ledger else {
-            return Ok(());
-        };
-        let mut inputs: HashMap<_, Vec<_>> = HashMap::new();
-        for input in body.tx.iter_mut().flat_map(|tx| tx.inputs.iter_mut()) {
-            let txo_ref = (input.tx_hash.to_vec(), input.output_index);
-            inputs.entry(txo_ref).or_default().push(input);
-        }
-        let refs = inputs
-            .keys()
-            .map(|(hash, index)| TxoRef {
-                tx_hash: hash.clone(),
-                tx_index: *index,
-            })
-            .collect();
-        let outputs = {
-            let mut lock = ledger.lock().await;
-            lock.read_utxos(refs).await?
-        };
-        for output in outputs {
-            let key = (output.ref_.tx_hash, output.ref_.tx_index);
-            if let Some(inps) = inputs.get_mut(&key) {
-                let tx_output: conway::TransactionOutput = minicbor::decode(&output.body)?;
-                for inp in inps {
-                    inp.as_output = Some(convert_txo(&tx_output));
-                }
-            }
-        }
-        Ok(())
     }
 }
 

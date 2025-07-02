@@ -47,7 +47,7 @@ impl ContractManager {
         let ledger = Some(blockchain.ledger().await);
         let manager = Self {
             config: Some(config.clone()),
-            u5c: Arc::new(UtxorpcAdapter::new(ledger.clone())),
+            u5c: Arc::new(UtxorpcAdapter::new()),
             ledger,
             runtimes: DashMap::new(),
         };
@@ -69,7 +69,7 @@ impl ContractManager {
         Self {
             config: None,
             ledger: None,
-            u5c: Arc::new(UtxorpcAdapter::new(None)),
+            u5c: Arc::new(UtxorpcAdapter::new()),
             runtimes: DashMap::new(),
         }
     }
