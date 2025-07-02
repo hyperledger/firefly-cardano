@@ -12,9 +12,10 @@ pub struct BlockfrostClient {
 }
 
 impl BlockfrostClient {
-    pub fn new(key: &str) -> Self {
+    pub fn new(key: &str, base_url: &Option<String>) -> Self {
         use blockfrost::USER_AGENT;
         let mut settings = BlockFrostSettings::new();
+        settings.base_url = base_url.clone();
         settings
             .headers
             .insert("User-Agent".into(), format!("{USER_AGENT} (firefly)"));
