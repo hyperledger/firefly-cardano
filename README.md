@@ -7,6 +7,8 @@
 
 The Hyperledger FireFly monorepo for Cardano blockchain offers a unified repository containing all the code, documentation, and tools necessary for developing and deploying multi-enterprise blockchain applications on the Cardano network.
 
+![Architecture diagram](./arch.svg)
+
 ## Configuration of components
 
 For the FireFly Cardano Connector config, see [config.md](firefly-cardanoconnect/config.md).
