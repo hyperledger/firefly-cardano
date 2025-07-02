@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use crate::streams::BlockInfo;
 use anyhow::Result;
 use balius_runtime::ledgers::{CustomLedger, Ledger, TxoRef};
@@ -39,27 +41,30 @@ impl UtxorpcAdapter {
         let Some(ledger) = &self.ledger else {
             return Ok(());
         };
-        let inputs: Vec<_> = body
-            .tx
-            .iter_mut()
-            .flat_map(|tx| tx.inputs.iter_mut())
-            .collect();
+        let mut inputs: HashMap<_, Vec<_>> = HashMap::new();
+        for input in body.tx.iter_mut().flat_map(|tx| tx.inputs.iter_mut()) {
+            let txo_ref = (input.tx_hash.to_vec(), input.output_index);
+            inputs.entry(txo_ref).or_default().push(input);
+        }
         let refs = inputs
-            .iter()
-            .map(|txi| TxoRef {
-                tx_hash: txi.tx_hash.to_vec(),
-                tx_index: txi.output_index,
+            .keys()
+            .map(|(hash, index)| TxoRef {
+                tx_hash: hash.clone(),
+                tx_index: *index,
             })
             .collect();
         let outputs = {
             let mut lock = ledger.lock().await;
             lock.read_utxos(refs).await?
         };
-        for (input, output) in inputs.into_iter().zip(outputs) {
-            assert_eq!(input.tx_hash, output.ref_.tx_hash);
-            assert_eq!(input.output_index, output.ref_.tx_index);
-            let tx_output: conway::TransactionOutput = minicbor::decode(&output.body)?;
-            input.as_output = Some(convert_txo(&tx_output));
+        for output in outputs {
+            let key = (output.ref_.tx_hash, output.ref_.tx_index);
+            if let Some(inps) = inputs.get_mut(&key) {
+                let tx_output: conway::TransactionOutput = minicbor::decode(&output.body)?;
+                for inp in inps {
+                    inp.as_output = Some(convert_txo(&tx_output));
+                }
+            }
         }
         Ok(())
     }
