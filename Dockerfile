@@ -32,6 +32,9 @@ COPY firefly-server /app/firefly-server
 COPY Cargo.toml Cargo.lock /app/
 RUN --mount=type=cache,target=/usr/local/cargo/registry \
     --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
+    cargo test
+RUN --mount=type=cache,target=/usr/local/cargo/registry \
+    --mount=type=cache,target=$SCCACHE_DIR,sharing=locked \
     cargo build --release
 
 # Define separate targets for each service

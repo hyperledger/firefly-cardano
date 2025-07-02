@@ -122,7 +122,7 @@ pub struct BlockRecord {
     pub rolled_back: bool,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct EventId {
     pub listener_id: ListenerId,
     pub address: Option<String>,
@@ -135,7 +135,7 @@ pub struct EventId {
     pub timestamp: Option<SystemTime>,
 }
 
-#[derive(Clone, Debug)]
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub struct ContractEvent {
     pub id: EventId,
     pub data: serde_json::Value,

@@ -4,7 +4,7 @@ use crate::strong_id;
 
 strong_id!(OperationId, String);
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub struct Operation {
     pub id: OperationId,
     pub status: OperationStatus,
@@ -12,7 +12,7 @@ pub struct Operation {
     pub contract_address: Option<String>,
 }
 
-#[derive(Clone, Debug, Serialize, Deserialize)]
+#[derive(Clone, Debug, Serialize, Deserialize, PartialEq, Eq)]
 pub enum OperationStatus {
     Succeeded,
     Pending,
