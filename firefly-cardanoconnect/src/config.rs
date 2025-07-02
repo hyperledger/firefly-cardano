@@ -15,12 +15,12 @@ use crate::{
 pub struct CardanoConnectConfig {
     pub api: ApiConfig,
     pub connector: ConnectorConfig,
+    pub contracts: Option<ContractsConfig>,
     #[serde(default)]
     pub http: HttpClientConfig,
     pub log: LogConfig,
     #[serde(default)]
     pub persistence: PersistenceConfig,
-    pub contracts: Option<ContractsConfig>,
 }
 
 #[derive(Debug, Deserialize)]
