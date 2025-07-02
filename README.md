@@ -47,8 +47,8 @@ docker compose watch
   ```bash
     cargo run --bin firefly-cardano-generate-key -- --wallet-dir infra/wallet --testnet
 
-    # or if you have installed just... check https://github.com/casey/just?tab=readme-ov-file#installation
-    just generate-key
+    # or if you can run makefiles...
+    make generate-key
   ```
 
 - To start up the connector please execute:
@@ -63,7 +63,7 @@ docker compose watch
   > **_NOTE:_** If you want to skip building, omit the `--build` flag.
 
 - Swagger definitions can be viewed at `http://localhost:5018/api` and `http://localhost:8555/api`
-- Execute `just demo` to run the demo application
+- Execute `make demo` to run the demo application
 
 ## Engage with the community
 
