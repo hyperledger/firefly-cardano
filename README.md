@@ -7,6 +7,8 @@
 
 The Hyperledger FireFly monorepo for Cardano blockchain offers a unified repository containing all the code, documentation, and tools necessary for developing and deploying multi-enterprise blockchain applications on the Cardano network.
 
+![Architecture diagram](./arch.svg)
+
 ## Configuration of components
 
 For the FireFly Cardano Connector config, see [config.md](firefly-cardanoconnect/config.md).
@@ -26,6 +28,9 @@ The easier way to get started is to use Docker compose to build your entire clus
 ```
 # To compose a cluster using Blockfrost as a backing store
 BLOCKFROST_KEY=previewXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXXX docker compose -f infra/docker-compose.yaml up --build -d
+
+# If you are running your own Blockfrost instance, you can pass the url
+BLOCKFROST_BASE_URL=https://localhost:3000 docker compose -f infra/docker-compose.yaml up --build -d
 
 # To create a cluster with a local cardano node (takes longer to spin up)
 docker compose -f infra/docker-compose.node.yaml up --build -d
@@ -47,8 +52,8 @@ docker compose watch
   ```bash
     cargo run --bin firefly-cardano-generate-key -- --wallet-dir infra/wallet --testnet
 
-    # or if you have installed just... check https://github.com/casey/just?tab=readme-ov-file#installation
-    just generate-key
+    # or if you can run makefiles...
+    make generate-key
   ```
 
 - To start up the connector please execute:
@@ -63,7 +68,7 @@ docker compose watch
   > **_NOTE:_** If you want to skip building, omit the `--build` flag.
 
 - Swagger definitions can be viewed at `http://localhost:5018/api` and `http://localhost:8555/api`
-- Execute `just demo` to run the demo application
+- Execute `make demo` to run the demo application
 
 ## Engage with the community
 

@@ -17,6 +17,7 @@
 |---|-----------|----|-------------|
 |socket|Path to the socket of a Cardano node|`string`|
 |blockfrostKey|Blockfrost API key|`string`|
+|blockfrostBaseUrl|The base URL of a Blockfrost instance. Set this if you are using a RYO instance.|`string`|
 |network|The network to connect to|'mainnet', 'preview', or 'preprod'|`mainnet`
 |networkMagic|An optional magic number|`int`|depends on `network`
 |genesisHash|The hash of the genesis block|`string`|depends on `network`

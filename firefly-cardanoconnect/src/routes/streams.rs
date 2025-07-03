@@ -9,34 +9,14 @@ use serde::{Deserialize, Serialize};
 use crate::AppState;
 use crate::streams::{BlockReference, ListenerFilter, ListenerType, Stream};
 
-fn example_batch_size() -> usize {
-    50
-}
-
-fn example_opt_batch_size() -> Option<usize> {
-    Some(example_batch_size())
-}
-
-fn example_batch_timeout_ms() -> u64 {
-    500
-}
-
-fn example_opt_batch_timeout_ms() -> Option<u64> {
-    Some(example_batch_timeout_ms())
-}
-
-fn example_from_block() -> Option<String> {
-    Some("newest".into())
-}
-
 #[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct CreateStreamRequest {
     pub name: String,
-    #[schemars(example = "example_batch_size")]
+    #[schemars(example = 50)]
     pub batch_size: usize,
     #[serde(rename = "batchTimeoutMS")]
-    #[schemars(example = "example_batch_timeout_ms")]
+    #[schemars(example = 500)]
     pub batch_timeout_ms: u64,
 }
 
@@ -49,10 +29,10 @@ pub struct StreamPathParameters {
 #[derive(Deserialize, JsonSchema)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateStreamRequest {
-    #[schemars(example = "example_opt_batch_size")]
+    #[schemars(example = Some(50))]
     pub batch_size: Option<usize>,
     #[serde(rename = "batchTimeoutMS")]
-    #[schemars(example = "example_opt_batch_timeout_ms")]
+    #[schemars(example = Some(500))]
     pub batch_timeout_ms: Option<u64>,
 }
 
@@ -61,10 +41,10 @@ pub struct UpdateStreamRequest {
 pub struct EventStream {
     pub id: String,
     pub name: String,
-    #[schemars(example = "example_batch_size")]
+    #[schemars(example = Some(50))]
     pub batch_size: usize,
     #[serde(rename = "batchTimeoutMS")]
-    #[schemars(example = "example_batch_timeout_ms")]
+    #[schemars(example = Some(500))]
     pub batch_timeout_ms: u64,
 }
 impl From<Stream> for EventStream {
@@ -91,7 +71,7 @@ pub struct CreateListenerRequest {
     pub name: String,
     #[serde(rename = "type")]
     pub type_: ListenerType,
-    #[schemars(example = "example_from_block")]
+    #[schemars(example = &"newest")]
     pub from_block: Option<String>,
     #[serde(default)]
     pub filters: Vec<ListenerFilter>,
