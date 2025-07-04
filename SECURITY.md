@@ -1,0 +1,1 @@
+See https://github.com/hyperledger/firefly/blob/main/SECURITY.md
