@@ -6,7 +6,7 @@ Example usage:
 ```sh
 # from project root
 cargo run --bin firefly-cardano-deploy-contract -- --contract-path ./wasm/simple-tx
-# Or just...
-just deploy-contract
+# Or make...
+make deploy-contract
 ```
 

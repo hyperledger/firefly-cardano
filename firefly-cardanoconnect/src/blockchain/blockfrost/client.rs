@@ -1,8 +1,9 @@
 use anyhow::Result;
 pub use blockfrost::Pagination;
 use blockfrost::{BlockFrostSettings, BlockfrostAPI, BlockfrostError, BlockfrostResult};
-pub use blockfrost_openapi::models::{
-    AddressUtxoContentInner, BlockContent, EpochParamContent, TxContentCbor,
+use blockfrost_openapi::models::{
+    address_utxo_content_inner::AddressUtxoContentInner, block_content::BlockContent,
+    epoch_param_content::EpochParamContent, tx_content_cbor::TxContentCbor,
 };
 
 #[derive(Debug, Clone)]
@@ -11,9 +12,10 @@ pub struct BlockfrostClient {
 }
 
 impl BlockfrostClient {
-    pub fn new(key: &str) -> Self {
+    pub fn new(key: &str, base_url: &Option<String>) -> Self {
         use blockfrost::USER_AGENT;
         let mut settings = BlockFrostSettings::new();
+        settings.base_url = base_url.clone();
         settings
             .headers
             .insert("User-Agent".into(), format!("{USER_AGENT} (firefly)"));

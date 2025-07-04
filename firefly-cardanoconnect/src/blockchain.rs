@@ -27,6 +27,7 @@ mod n2c;
 pub struct BlockchainConfig {
     pub socket: Option<PathBuf>,
     pub blockfrost_key: Option<Secret<String>>,
+    pub blockfrost_base_url: Option<String>,
     pub network: Option<Network>,
     pub network_magic: Option<u64>,
     pub genesis_hash: Option<String>,
@@ -88,22 +89,29 @@ impl BlockchainClient {
     pub async fn new(config: &CardanoConnectConfig) -> Result<Self> {
         let blockchain = &config.connector.blockchain;
 
-        let client = match (&blockchain.socket, &blockchain.blockfrost_key) {
-            (Some(socket), _) => {
-                let client = NodeToClient::new(
-                    socket,
-                    blockchain.magic(),
-                    blockchain.era,
-                    blockchain.genesis_values(),
-                )
-                .await;
-                ClientImpl::NodeToClient(RwLock::new(client))
-            }
-            (None, Some(blockfrost_key)) => {
-                let client = Blockfrost::new(&blockfrost_key.0, blockchain.genesis_hash());
-                ClientImpl::Blockfrost(client)
-            }
-            (None, None) => bail!("Missing blockchain configuration"),
+        let client = if let Some(socket) = &blockchain.socket {
+            let client = NodeToClient::new(
+                socket,
+                blockchain.magic(),
+                blockchain.era,
+                blockchain.genesis_values(),
+            )
+            .await;
+            ClientImpl::NodeToClient(RwLock::new(client))
+        } else if blockchain.blockfrost_key.is_some() || blockchain.blockfrost_base_url.is_some() {
+            let key = blockchain
+                .blockfrost_key
+                .clone()
+                .map(|k| k.0)
+                .unwrap_or_default();
+            let client = Blockfrost::new(
+                &key,
+                &blockchain.blockfrost_base_url,
+                blockchain.genesis_hash(),
+            );
+            ClientImpl::Blockfrost(client)
+        } else {
+            bail!("Missing blockchain configuration")
         };
         Ok(Self {
             client,

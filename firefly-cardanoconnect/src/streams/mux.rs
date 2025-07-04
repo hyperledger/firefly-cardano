@@ -508,6 +508,7 @@ struct StreamDispatcherSettings {
     batch_timeout: Duration,
 }
 
+#[derive(Clone, Debug, PartialEq, Eq)]
 pub enum BatchEvent {
     ContractEvent(ContractEvent),
     Receipt(Operation),
@@ -531,5 +532,121 @@ pub struct StreamSubscription {
 impl StreamSubscription {
     pub async fn recv(&mut self) -> Option<Batch> {
         self.batch_receiver.recv().await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::{sync::Arc, time::Duration};
+
+    use crate::{
+        blockchain::BlockchainClient,
+        contracts::ContractManager,
+        persistence,
+        streams::{
+            BlockReference, Listener, ListenerFilter, ListenerType, Stream, mux::Multiplexer,
+        },
+    };
+    use firefly_server::apitypes::ApiError;
+    use tokio::sync::watch;
+
+    #[tokio::test]
+    async fn should_ack_events() -> Result<(), ApiError> {
+        let blockchain = Arc::new(BlockchainClient::mock().await);
+        let contracts = Arc::new(ContractManager::none());
+        let persistence = persistence::init(&persistence::PersistenceConfig::Mock).await?;
+        let operation_update_sink = watch::Sender::new(None);
+        let mux = Multiplexer::new(
+            blockchain.clone(),
+            contracts,
+            persistence.clone(),
+            operation_update_sink,
+        )
+        .await?;
+
+        let stream = Stream {
+            id: "stream_id".to_string().into(),
+            name: "Some Stream".into(),
+            batch_size: 5,
+            batch_timeout: Duration::from_millis(100),
+        };
+        persistence.write_stream(&stream).await?;
+        mux.handle_stream_write(&stream).await?;
+
+        let listener = Listener {
+            id: "listener_id".to_string().into(),
+            stream_id: stream.id.clone(),
+            name: "Some Listener".into(),
+            listener_type: ListenerType::Blocks,
+            filters: vec![ListenerFilter::TransactionId("any".into())],
+        };
+        persistence.write_listener(&listener).await?;
+        mux.handle_listener_write(&listener, Some(BlockReference::Origin))
+            .await?;
+
+        let mut subscription = mux.subscribe("Some Stream").await?;
+
+        let batch = subscription.recv().await.unwrap();
+        assert_eq!(batch.batch_number, 1);
+        assert_eq!(batch.events.len(), 5);
+        let old_events = batch.events.clone();
+        batch.ack();
+
+        let batch = subscription.recv().await.unwrap();
+        assert_eq!(batch.batch_number, 2);
+        assert_eq!(batch.events.len(), 5);
+        assert_ne!(batch.events, old_events);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn should_nack_events() -> Result<(), ApiError> {
+        let blockchain = Arc::new(BlockchainClient::mock().await);
+        let contracts = Arc::new(ContractManager::none());
+        let persistence = persistence::init(&persistence::PersistenceConfig::Mock).await?;
+        let operation_update_sink = watch::Sender::new(None);
+        let mux = Multiplexer::new(
+            blockchain.clone(),
+            contracts,
+            persistence.clone(),
+            operation_update_sink,
+        )
+        .await?;
+
+        let stream = Stream {
+            id: "stream_id".to_string().into(),
+            name: "Some Stream".into(),
+            batch_size: 5,
+            batch_timeout: Duration::from_millis(100),
+        };
+        persistence.write_stream(&stream).await?;
+        mux.handle_stream_write(&stream).await?;
+
+        let listener = Listener {
+            id: "listener_id".to_string().into(),
+            stream_id: stream.id.clone(),
+            name: "Some Listener".into(),
+            listener_type: ListenerType::Blocks,
+            filters: vec![ListenerFilter::TransactionId("any".into())],
+        };
+        persistence.write_listener(&listener).await?;
+        mux.handle_listener_write(&listener, Some(BlockReference::Origin))
+            .await?;
+
+        let mut subscription = mux.subscribe("Some Stream").await?;
+
+        let batch = subscription.recv().await.unwrap();
+        assert_eq!(batch.batch_number, 1);
+        assert_eq!(batch.events.len(), 5);
+        let old_events = batch.events.clone();
+        drop(batch);
+
+        let batch = subscription.recv().await.unwrap();
+        assert_eq!(batch.batch_number, 1);
+        assert_eq!(batch.events.len(), 5);
+        assert_eq!(batch.events, old_events);
+
+        Ok(())
     }
 }

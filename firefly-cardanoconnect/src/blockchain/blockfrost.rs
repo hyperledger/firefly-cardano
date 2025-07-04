@@ -14,9 +14,9 @@ pub struct Blockfrost {
 }
 
 impl Blockfrost {
-    pub fn new(key: &str, genesis_hash: &str) -> Self {
+    pub fn new(key: &str, base_url: &Option<String>, genesis_hash: &str) -> Self {
         Self {
-            client: BlockfrostClient::new(key),
+            client: BlockfrostClient::new(key, base_url),
             genesis_hash: genesis_hash.to_string(),
         }
     }

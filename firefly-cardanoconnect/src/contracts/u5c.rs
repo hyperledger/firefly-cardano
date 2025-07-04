@@ -1,9 +1,33 @@
+use crate::streams::BlockInfo;
+use anyhow::Result;
 use pallas_crypto::hash::Hasher;
 use pallas_primitives::conway;
 use pallas_traverse::ComputeHash as _;
 use utxorpc_spec::utxorpc::v1alpha::cardano;
 
-use crate::streams::BlockInfo;
+pub struct UtxorpcAdapter {}
+
+impl UtxorpcAdapter {
+    pub fn new() -> Self {
+        Self {}
+    }
+
+    pub async fn convert_block(&self, info: &BlockInfo) -> Result<balius_runtime::Block> {
+        let header = cardano::BlockHeader {
+            slot: info.block_slot.unwrap_or_default(),
+            hash: hex::decode(&info.block_hash).unwrap().into(),
+            height: info.block_height.unwrap_or_default(),
+        };
+        let body = cardano::BlockBody {
+            tx: info.transactions.iter().map(|tx| convert_tx(tx)).collect(),
+        };
+        let block = cardano::Block {
+            header: Some(header),
+            body: Some(body),
+        };
+        Ok(balius_runtime::Block::Cardano(block))
+    }
+}
 
 fn hash_tx(data: &[u8]) -> Vec<u8> {
     let mut decoder = minicbor::Decoder::new(data);
@@ -99,131 +123,125 @@ fn convert_native_script(script: &conway::NativeScript) -> cardano::NativeScript
     }
 }
 
-fn convert_tx(bytes: &[u8]) -> cardano::Tx {
-    use pallas_primitives::{alonzo, conway};
+fn convert_txi(real_input: &conway::TransactionInput) -> cardano::TxInput {
+    cardano::TxInput {
+        tx_hash: real_input.transaction_id.to_vec().into(),
+        output_index: real_input.index as u32,
+        as_output: None,
+        redeemer: None,
+    }
+}
 
+fn convert_txo(real_output: &conway::TransactionOutput) -> cardano::TxOutput {
+    use pallas_primitives::{alonzo, conway};
+    let mut output = cardano::TxOutput::default();
+    match real_output {
+        conway::TransactionOutput::Legacy(txo) => {
+            output.address = txo.address.to_vec().into();
+            if let Some(hash) = txo.datum_hash {
+                output.datum = Some(cardano::Datum {
+                    hash: hash.to_vec().into(),
+                    ..cardano::Datum::default()
+                });
+            }
+            match &txo.amount {
+                alonzo::Value::Coin(c) => {
+                    output.coin = *c;
+                }
+                alonzo::Value::Multiasset(c, assets) => {
+                    output.coin = *c;
+                    for (policy_id, policy_assets) in assets.iter() {
+                        let assets = policy_assets
+                            .iter()
+                            .map(|(name, amount)| cardano::Asset {
+                                name: name.to_vec().into(),
+                                output_coin: *amount,
+                                ..cardano::Asset::default()
+                            })
+                            .collect();
+                        output.assets.push(cardano::Multiasset {
+                            policy_id: policy_id.to_vec().into(),
+                            assets,
+                            ..cardano::Multiasset::default()
+                        });
+                    }
+                }
+            }
+        }
+        conway::TransactionOutput::PostAlonzo(txo) => {
+            output.address = txo.address.to_vec().into();
+            if let Some(datum_option) = txo.datum_option.as_deref() {
+                let mut datum = cardano::Datum::default();
+                match datum_option {
+                    conway::DatumOption::Hash(hash) => {
+                        datum.hash = hash.to_vec().into();
+                    }
+                    conway::DatumOption::Data(data) => {
+                        let mut cbor = vec![];
+                        minicbor::encode(data, &mut cbor).expect("infallible");
+                        datum.hash = data.0.compute_hash().to_vec().into();
+                        datum.payload = Some(convert_plutus_data((*data.0).clone()));
+                        datum.original_cbor = cbor.into();
+                    }
+                }
+            }
+            match &txo.value {
+                conway::Value::Coin(c) => {
+                    output.coin = *c;
+                }
+                conway::Value::Multiasset(c, assets) => {
+                    output.coin = *c;
+                    for (policy_id, policy_assets) in assets.iter() {
+                        let assets = policy_assets
+                            .iter()
+                            .map(|(name, amount)| cardano::Asset {
+                                name: name.to_vec().into(),
+                                output_coin: amount.into(),
+                                ..cardano::Asset::default()
+                            })
+                            .collect();
+                        output.assets.push(cardano::Multiasset {
+                            policy_id: policy_id.to_vec().into(),
+                            assets,
+                            ..cardano::Multiasset::default()
+                        });
+                    }
+                }
+            }
+            if let Some(script) = txo.script_ref.as_deref() {
+                let inner = match script {
+                    conway::ScriptRef::NativeScript(script) => {
+                        cardano::script::Script::Native(convert_native_script(script))
+                    }
+                    conway::ScriptRef::PlutusV1Script(script) => {
+                        cardano::script::Script::PlutusV1(script.0.to_vec().into())
+                    }
+                    conway::ScriptRef::PlutusV2Script(script) => {
+                        cardano::script::Script::PlutusV2(script.0.to_vec().into())
+                    }
+                    conway::ScriptRef::PlutusV3Script(script) => {
+                        cardano::script::Script::PlutusV3(script.0.to_vec().into())
+                    }
+                };
+                output.script = Some(cardano::Script {
+                    script: Some(inner),
+                });
+            }
+        }
+    }
+    output
+}
+fn convert_tx(bytes: &[u8]) -> cardano::Tx {
     let mut tx = cardano::Tx {
         hash: hash_tx(bytes).into(),
         ..cardano::Tx::default()
     };
     let real_tx: conway::Tx = minicbor::decode(bytes).unwrap();
+    for real_input in &real_tx.transaction_body.inputs {
+        tx.inputs.push(convert_txi(real_input));
+    }
     for real_output in &real_tx.transaction_body.outputs {
-        let mut output = cardano::TxOutput::default();
-        match real_output {
-            conway::TransactionOutput::Legacy(txo) => {
-                output.address = txo.address.to_vec().into();
-                if let Some(hash) = txo.datum_hash {
-                    output.datum = Some(cardano::Datum {
-                        hash: hash.to_vec().into(),
-                        ..cardano::Datum::default()
-                    });
-                }
-                match &txo.amount {
-                    alonzo::Value::Coin(c) => {
-                        output.coin = *c;
-                    }
-                    alonzo::Value::Multiasset(c, assets) => {
-                        output.coin = *c;
-                        for (policy_id, policy_assets) in assets.iter() {
-                            let assets = policy_assets
-                                .iter()
-                                .map(|(name, amount)| cardano::Asset {
-                                    name: name.to_vec().into(),
-                                    output_coin: *amount,
-                                    ..cardano::Asset::default()
-                                })
-                                .collect();
-                            output.assets.push(cardano::Multiasset {
-                                policy_id: policy_id.to_vec().into(),
-                                assets,
-                                ..cardano::Multiasset::default()
-                            });
-                        }
-                    }
-                }
-            }
-            conway::TransactionOutput::PostAlonzo(txo) => {
-                output.address = txo.address.to_vec().into();
-                if let Some(datum_option) = txo.datum_option.as_deref() {
-                    let mut datum = cardano::Datum::default();
-                    match datum_option {
-                        conway::DatumOption::Hash(hash) => {
-                            datum.hash = hash.to_vec().into();
-                        }
-                        conway::DatumOption::Data(data) => {
-                            let mut cbor = vec![];
-                            minicbor::encode(data, &mut cbor).expect("infallible");
-                            datum.hash = data.0.compute_hash().to_vec().into();
-                            datum.payload = Some(convert_plutus_data((*data.0).clone()));
-                            datum.original_cbor = cbor.into();
-                        }
-                    }
-                }
-                match &txo.value {
-                    conway::Value::Coin(c) => {
-                        output.coin = *c;
-                    }
-                    conway::Value::Multiasset(c, assets) => {
-                        output.coin = *c;
-                        for (policy_id, policy_assets) in assets.iter() {
-                            let assets = policy_assets
-                                .iter()
-                                .map(|(name, amount)| cardano::Asset {
-                                    name: name.to_vec().into(),
-                                    output_coin: amount.into(),
-                                    ..cardano::Asset::default()
-                                })
-                                .collect();
-                            output.assets.push(cardano::Multiasset {
-                                policy_id: policy_id.to_vec().into(),
-                                assets,
-                                ..cardano::Multiasset::default()
-                            });
-                        }
-                    }
-                }
-                if let Some(script) = txo.script_ref.as_deref() {
-                    let inner = match script {
-                        conway::ScriptRef::NativeScript(script) => {
-                            cardano::script::Script::Native(convert_native_script(script))
-                        }
-                        conway::ScriptRef::PlutusV1Script(script) => {
-                            cardano::script::Script::PlutusV1(script.0.to_vec().into())
-                        }
-                        conway::ScriptRef::PlutusV2Script(script) => {
-                            cardano::script::Script::PlutusV2(script.0.to_vec().into())
-                        }
-                        conway::ScriptRef::PlutusV3Script(script) => {
-                            cardano::script::Script::PlutusV3(script.0.to_vec().into())
-                        }
-                    };
-                    output.script = Some(cardano::Script {
-                        script: Some(inner),
-                    });
-                }
-            }
-        }
-        tx.outputs.push(output);
+        tx.outputs.push(convert_txo(real_output));
     }
     tx
-}
-
-/**
- * Convert a block in our internal format (basically the bytes on the chain)
- * into one in balius format (mostly a list of utxorpc-formatted txos)
- */
-pub fn convert_block(info: &BlockInfo) -> balius_runtime::Block {
-    let header = cardano::BlockHeader {
-        slot: info.block_slot.unwrap_or_default(),
-        hash: hex::decode(&info.block_hash).unwrap().into(),
-        height: info.block_height.unwrap_or_default(),
-    };
-    let body = cardano::BlockBody {
-        tx: info.transactions.iter().map(|tx| convert_tx(tx)).collect(),
-    };
-    let block = cardano::Block {
-        header: Some(header),
-        body: Some(body),
-    };
-    balius_runtime::Block::Cardano(block)
 }

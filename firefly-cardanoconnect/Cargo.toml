@@ -1,6 +1,6 @@
 [package]
 name = "firefly-cardanoconnect"
-version = "0.4.2"
+version = "0.5.0"
 description = "An implementation of the FireFly Connector API for Cardano"
 license-file.workspace = true
 publish = false
@@ -8,12 +8,12 @@ edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
-aide = { version = "0.14", features = ["axum", "axum-json", "axum-query"] }
+aide = { version = "0.15", features = ["axum", "axum-json", "axum-query"] }
 anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["macros", "ws"] }
-balius-runtime = "0.3.4"
-blockfrost = { git = "https://github.com/SupernaviX/blockfrost-rust.git", rev = "cfa7a5e", default-features = false, features = ["rustls-tls"] }
+balius-runtime = { git = "https://github.com/txpipe/balius", rev = "32be194", default-features = false, features = ["rustls-tls"] }
+blockfrost = { git = "https://github.com/blockfrost/blockfrost-rust.git", rev = "1877c38", default-features = false, features = ["rustls-tls"] }
 blockfrost-openapi = "0.1.69"
 clap = { version = "4", features = ["derive"] }
 chrono = "0.4"
@@ -34,12 +34,12 @@ rand = "0.9"
 rand_chacha = "0.9"
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
 refinery = { version = "0.8", features = ["rusqlite"] }
-rusqlite = { version = "0.31", features = ["bundled"] }
-schemars = "0.8"
+rusqlite = { version = "0.32", features = ["bundled"] }
+schemars = "0.9"
 serde = "1"
 serde_json = "1"
 tokio = { version = "1", features = ["full"] }
-tokio-rusqlite = { version = "0.5" }
+tokio-rusqlite = { version = "0.6" }
 tracing = "0.1"
 ulid = "1"
 utxorpc-spec = "0.15"

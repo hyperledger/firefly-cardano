@@ -1,6 +1,6 @@
 use anyhow::{Context as _, Result, bail};
 use async_trait::async_trait;
-use blockfrost_openapi::models::BlockContent;
+use blockfrost_openapi::models::block_content::BlockContent;
 use futures::future::try_join_all;
 use std::{collections::VecDeque, time::Duration};
 use tokio::time;
