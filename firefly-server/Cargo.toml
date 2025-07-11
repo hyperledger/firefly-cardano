@@ -1,6 +1,6 @@
 [package]
 name = "firefly-server"
-version = "0.5.0"
+version = "0.6.0"
 description = "Internal library with shared code for services"
 license-file.workspace = true
 publish = false
