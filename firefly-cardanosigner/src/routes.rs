@@ -27,7 +27,7 @@ pub async fn sign_transaction(
     Json(req): Json<SignTransactionRequest>,
 ) -> ApiResult<Json<SignTransactionResponse>> {
     let Some(private_key) = key_store.find_signing_key(&req.address)? else {
-        return Err(ApiError::not_found("No key found for the given address"));
+        return Err(ApiError::not_found(format!("No key found for the given address {}", req.address)));
     };
 
     let tx_bytes = hex::decode(&req.transaction).context("invalid transaction cbor")?;

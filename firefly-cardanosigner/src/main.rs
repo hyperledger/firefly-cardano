@@ -61,5 +61,10 @@ async fn main() -> Result<()> {
         .api_route("/health", get(health))
         .api_route("/sign", post(sign_transaction))
         .with_state(state);
-    firefly_server::server::serve(&config.api, router).await
+
+
+    // Nest all these routes under /api/v1
+    let v1 = ApiRouter::new().nest("/api/v1", router);
+
+    firefly_server::server::serve(&config.api, v1).await
 }

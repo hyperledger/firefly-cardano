@@ -124,5 +124,9 @@ async fn main() -> Result<()> {
         .route("/ws", axum::routing::get(handle_socket_upgrade))
         .with_state(state);
 
-    firefly_server::server::serve(&config.api, router).await
+
+    // Nest all these routes under /api/v1
+    let v1 = ApiRouter::new().nest("/api/v1", router);
+
+    firefly_server::server::serve(&config.api, v1).await
 }
