@@ -124,5 +124,5 @@ async fn main() -> Result<()> {
         .route("/ws", axum::routing::get(handle_socket_upgrade))
         .with_state(state);
 
-    firefly_server::server::serve(&config.api, router).await
+    firefly_server::server::serve(&config.api, [("v1", router)]).await
 }
