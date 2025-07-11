@@ -9,6 +9,7 @@ use pallas_crypto::{
 };
 use pallas_primitives::conway::PlutusData::BoundedBytes;
 use serde::Deserialize;
+use tracing::{debug, warn};
 
 use crate::{config::FileWalletConfig, private_key::PrivateKey};
 
@@ -32,6 +33,7 @@ impl KeyStore {
         let dir_entries = fs::read_dir(&config.path).context("could not read fileWallet.path")?;
         for dir_entry_res in dir_entries {
             let dir_entry = dir_entry_res.context("could not read directory entry")?;
+            debug!("Loading key \"{}\"", dir_entry.file_name().display());
             let raw_contents = std::fs::read_to_string(dir_entry.path())?;
             let contents: SigningKeyContents = serde_json::from_str(&raw_contents)?;
             let cbor =
@@ -44,6 +46,9 @@ impl KeyStore {
             .context("could not read signing key")?;
 
             keys.push(key);
+        }
+        if keys.is_empty() {
+            warn!("No keys found in the wallet.");
         }
         Ok(Self { keys })
     }
