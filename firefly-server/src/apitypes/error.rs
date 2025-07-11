@@ -24,7 +24,7 @@ impl ApiError {
     }
     pub fn from_reqwest(err: reqwest::Error) -> Self {
         if let Some(status) = err.status() {
-            return Self::new(status, format!("{:#}", err));
+            return Self::new(status, format!("{err:#}"));
         }
         err.into()
     }

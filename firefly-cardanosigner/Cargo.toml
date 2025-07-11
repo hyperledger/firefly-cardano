@@ -8,10 +8,9 @@ edition = "2024"
 repository = "https://github.com/hyperledger/firefly-cardano"
 
 [dependencies]
-aide = { version = "0.15", features = ["axum", "axum-json"] }
+aide = { version = "0.14", features = ["axum", "axum-json"] }
 axum = "0.8"
 anyhow = "1"
-bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
@@ -20,7 +19,7 @@ pallas-addresses = "1.0.0-alpha.2"
 pallas-crypto = "1.0.0-alpha.2"
 pallas-primitives = "1.0.0-alpha.2"
 rand = "0.9"
-schemars = "0.9"
+schemars = "0.8"
 serde = "1"
 serde_json = "1"
 tracing = "0.1"
