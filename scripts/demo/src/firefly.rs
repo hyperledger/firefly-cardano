@@ -17,7 +17,6 @@ impl FireflyCardanoClient {
             format!("{}/api/v1", base_url)
         };
 
-
         Self {
             client: Client::new(),
             base_url: base_url.to_string() + "/api/v1",

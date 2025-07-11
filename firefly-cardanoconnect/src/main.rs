@@ -124,7 +124,6 @@ async fn main() -> Result<()> {
         .route("/ws", axum::routing::get(handle_socket_upgrade))
         .with_state(state);
 
-
     // Nest all these routes under /api/v1
     let v1 = ApiRouter::new().nest("/api/v1", router);
 

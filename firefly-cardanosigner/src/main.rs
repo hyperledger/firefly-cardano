@@ -62,7 +62,6 @@ async fn main() -> Result<()> {
         .api_route("/sign", post(sign_transaction))
         .with_state(state);
 
-
     // Nest all these routes under /api/v1
     let v1 = ApiRouter::new().nest("/api/v1", router);
 
