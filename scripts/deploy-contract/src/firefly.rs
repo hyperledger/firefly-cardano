@@ -10,9 +10,15 @@ pub struct FireflyCardanoClient {
 
 impl FireflyCardanoClient {
     pub fn new(base_url: &str) -> Self {
+        let base_url = if base_url.ends_with("/api/v1") {
+            base_url.to_string()
+        } else {
+            format!("{}/api/v1", base_url)
+        };
+
         Self {
             client: Client::new(),
-            base_url: base_url.to_string() + "/api/v1",
+            base_url: base_url,
         }
     }
 

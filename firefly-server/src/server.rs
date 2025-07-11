@@ -29,6 +29,7 @@ pub async fn serve(config: &ApiConfig, router: ApiRouter) -> Result<()> {
     let swagger_ui_router: Router = SwaggerUi::new("/api")
         .config(Config::new(["/api/openapi.json"]))
         .into();
+
     let app = router
         .route("/api/openapi.json", get(serve_api))
         .merge(swagger_ui_router);

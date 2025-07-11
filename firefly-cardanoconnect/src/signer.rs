@@ -17,8 +17,16 @@ pub struct CardanoSigner {
 impl CardanoSigner {
     pub fn new(config: &CardanoConnectConfig) -> Result<Self> {
         let client = HttpClient::new(&config.http)?;
-        let base_url = Url::parse(&config.connector.signer_url)?;
-        let sign_url = base_url.join("/api/v1/sign")?;
+
+        let signer_url = &config.connector.signer_url;
+        let signer_url = if signer_url.ends_with("/api/v1") {
+            signer_url.to_string()
+        } else {
+            format!("{}/api/v1", signer_url)
+        };
+
+        let base_url = Url::parse(&signer_url)?;
+        let sign_url = base_url.join("/sign")?;
         Ok(Self { client, sign_url })
     }
 
