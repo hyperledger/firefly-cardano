@@ -1252,7 +1252,6 @@ dependencies = [
  "aide",
  "anyhow",
  "axum 0.8.4",
- "bech32 0.11.0",
  "clap",
  "firefly-server",
  "hex",

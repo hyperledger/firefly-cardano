@@ -1,8 +1,7 @@
-use std::fs;
+use std::{collections::HashMap, fs};
 
 use anyhow::{Context, Result, anyhow, bail};
-use bech32::{Bech32, Hrp};
-use pallas_addresses::Address;
+use pallas_addresses::{Address, PaymentKeyHash, ShelleyPaymentPart};
 use pallas_crypto::{
     hash::Hasher,
     key::ed25519::{SecretKey, SecretKeyExtended},
@@ -15,7 +14,7 @@ use crate::{config::FileWalletConfig, private_key::PrivateKey};
 
 #[derive(Default)]
 pub struct KeyStore {
-    keys: Vec<PrivateKey>,
+    keys: HashMap<PaymentKeyHash, PrivateKey>,
 }
 
 #[derive(Deserialize)]
@@ -28,7 +27,7 @@ struct SigningKeyContents {
 
 impl KeyStore {
     pub fn from_fs(config: &FileWalletConfig) -> Result<Self> {
-        let mut keys = vec![];
+        let mut keys = HashMap::new();
 
         let dir_entries = fs::read_dir(&config.path).context("could not read fileWallet.path")?;
         for dir_entry_res in dir_entries {
@@ -45,7 +44,8 @@ impl KeyStore {
             }
             .context("could not read signing key")?;
 
-            keys.push(key);
+            let hash = Hasher::<224>::hash(key.public_key().as_ref());
+            keys.insert(hash, key);
         }
         if keys.is_empty() {
             warn!("No keys found in the wallet.");
@@ -54,26 +54,17 @@ impl KeyStore {
     }
 
     pub fn find_signing_key(&self, address: &str) -> Result<Option<&PrivateKey>> {
+        debug!("finding signing key for {address}");
         let Address::Shelley(addr) = Address::from_bech32(address)? else {
+            warn!("could not parse address {address} as shelley");
             return Ok(None);
         };
-        let header = addr.to_header();
-        let hrp = Hrp::parse(addr.hrp()?)?;
-        for key in &self.keys {
-            let key_addr = encode_address(key.public_key().as_ref(), header, &hrp)?;
-            if key_addr == address {
-                return Ok(Some(key));
-            }
-        }
-        Ok(None)
+        let ShelleyPaymentPart::Key(hash) = addr.payment() else {
+            warn!("address {address} does not have a key for payment");
+            return Ok(None);
+        };
+        Ok(self.keys.get(hash))
     }
-}
-
-fn encode_address(public_key: &[u8], header: u8, hrp: &Hrp) -> Result<String> {
-    let mut bytes = Vec::with_capacity(29);
-    bytes.push(header);
-    bytes.extend_from_slice(Hasher::<224>::hash(public_key).as_slice());
-    Ok(bech32::encode::<Bech32>(*hrp, &bytes)?)
 }
 
 fn read_normal_key(cbor: Vec<u8>) -> Result<PrivateKey> {

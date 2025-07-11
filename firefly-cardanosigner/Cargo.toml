@@ -11,7 +11,6 @@ repository = "https://github.com/hyperledger/firefly-cardano"
 aide = { version = "0.14", features = ["axum", "axum-json"] }
 axum = "0.8"
 anyhow = "1"
-bech32 = "0.11"
 clap = { version = "4", features = ["derive"] }
 firefly-server = { path = "../firefly-server" }
 hex = "0.4"
