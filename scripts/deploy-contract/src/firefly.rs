@@ -5,19 +5,19 @@ use uuid::Uuid;
 
 pub struct FireflyCardanoClient {
     client: Client,
-    base_url: String,
+    v1_base_url: String,
 }
 
 impl FireflyCardanoClient {
     pub fn new(base_url: &str) -> Self {
         Self {
             client: Client::new(),
-            base_url: base_url.to_string(),
+            v1_base_url: format!("${base_url}/api/v1"),
         }
     }
 
     pub async fn deploy_contract(&self, name: &str, version: &str, contract: &str) -> Result<()> {
-        let url = format!("{}/contracts/deploy", self.base_url);
+        let url = format!("{}/contracts/deploy", self.v1_base_url);
         let req = DeployContractRequest {
             id: Uuid::new_v4().to_string(),
             contract: contract.to_string(),
