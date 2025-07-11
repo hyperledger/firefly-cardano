@@ -13,7 +13,7 @@ impl FireflyCardanoClient {
     pub fn new(base_url: &str) -> Self {
         Self {
             client: Client::new(),
-            v1_base_url: format!("${base_url}/api/v1"),
+            v1_base_url: format!("{base_url}/api/v1"),
         }
     }
 
