@@ -6,19 +6,19 @@ use serde_json::Value;
 
 pub struct FireflyCardanoClient {
     client: Client,
-    base_url: String,
+    v1_base_url: String,
 }
 
 impl FireflyCardanoClient {
     pub fn new(base_url: &str) -> Self {
         Self {
             client: Client::new(),
-            base_url: base_url.to_string(),
+            v1_base_url: format!("{base_url}/api/v1"),
         }
     }
 
     pub async fn get_chain_tip(&self) -> Result<Tip> {
-        let url = format!("{}/chain/tip", self.base_url);
+        let url = format!("{}/chain/tip", self.v1_base_url);
         let res = self.client.get(url).send().await?;
         let res = Self::extract_error(res).await?;
         let body: Tip = res.json().await?;
@@ -32,7 +32,7 @@ impl FireflyCardanoClient {
         method: &str,
         params: impl IntoIterator<Item = (&str, Value)>,
     ) -> Result<Option<String>> {
-        let url = format!("{}/contracts/invoke", self.base_url);
+        let url = format!("{}/contracts/invoke", self.v1_base_url);
         let op_id = uuid::Uuid::new_v4().to_string();
         let mut req = InvokeContractRequest {
             address: address.to_string(),
@@ -52,7 +52,7 @@ impl FireflyCardanoClient {
         Self::extract_error(res).await?;
 
         // contracts are synchronous, so the result is already available
-        let url = format!("{}/transactions/{op_id}", self.base_url);
+        let url = format!("{}/transactions/{op_id}", self.v1_base_url);
         let res = self.client.get(url).send().await?;
         let res = Self::extract_error(res).await?;
         let body: OperationStatus = res.json().await?;
@@ -66,7 +66,7 @@ impl FireflyCardanoClient {
     }
 
     pub async fn create_stream(&self, settings: &StreamSettings) -> Result<String> {
-        let url = format!("{}/eventstreams", self.base_url);
+        let url = format!("{}/eventstreams", self.v1_base_url);
         let res = self.client.post(url).json(settings).send().await?;
         let res = Self::extract_error(res).await?;
         let body: EventStream = res.json().await?;
@@ -74,7 +74,7 @@ impl FireflyCardanoClient {
     }
 
     pub async fn list_streams(&self) -> Result<Vec<EventStream>> {
-        let url = format!("{}/eventstreams", self.base_url);
+        let url = format!("{}/eventstreams", self.v1_base_url);
         let res = self.client.get(url).send().await?;
         let res = Self::extract_error(res).await?;
         let body: Vec<EventStream> = res.json().await?;
@@ -86,7 +86,7 @@ impl FireflyCardanoClient {
         stream_id: &str,
         settings: &ListenerSettings,
     ) -> Result<String> {
-        let url = format!("{}/eventstreams/{}/listeners", self.base_url, stream_id);
+        let url = format!("{}/eventstreams/{}/listeners", self.v1_base_url, stream_id);
         let res = self.client.post(url).json(settings).send().await?;
         let res = Self::extract_error(res).await?;
         let body: Listener = res.json().await?;
@@ -94,7 +94,7 @@ impl FireflyCardanoClient {
     }
 
     pub async fn list_listeners(&self, stream_id: &str) -> Result<Vec<Listener>> {
-        let url = format!("{}/eventstreams/{}/listeners", self.base_url, stream_id);
+        let url = format!("{}/eventstreams/{}/listeners", self.v1_base_url, stream_id);
         let res = self.client.get(url).send().await?;
         let res = Self::extract_error(res).await?;
         let body: Vec<Listener> = res.json().await?;
@@ -104,7 +104,7 @@ impl FireflyCardanoClient {
     pub async fn delete_listener(&self, stream_id: &str, listener_id: &str) -> Result<()> {
         let url = format!(
             "{}/eventstreams/{}/listeners/{}",
-            self.base_url, stream_id, listener_id
+            self.v1_base_url, stream_id, listener_id
         );
         let res = self.client.delete(url).send().await?;
         Self::extract_error(res).await?;
@@ -112,7 +112,7 @@ impl FireflyCardanoClient {
     }
 
     pub async fn connect_ws(&self) -> Result<WebSocket> {
-        let url = format!("{}/ws", self.base_url);
+        let url = format!("{}/ws", self.v1_base_url);
         let res = self.client.get(url).upgrade().send().await?;
         Ok(res.into_websocket().await?)
     }

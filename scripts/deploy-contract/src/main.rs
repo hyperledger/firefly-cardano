@@ -66,10 +66,7 @@ async fn main() -> Result<()> {
     let contract = hex::encode(&component);
 
     println!("Deploying {address} to FireFly...");
-    let base_url = args
-        .firefly_url
-        .map(|u| format!("{u}/api/v1"))
-        .unwrap_or(args.firefly_cardano_url);
+    let base_url = args.firefly_url.unwrap_or(args.firefly_cardano_url);
     let firefly = FireflyCardanoClient::new(&base_url);
     firefly.deploy_contract(&name, &version, &contract).await?;
 

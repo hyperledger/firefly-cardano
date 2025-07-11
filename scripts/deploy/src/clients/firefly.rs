@@ -6,19 +6,19 @@ use serde::{Deserialize, Serialize};
 
 pub struct FireflyClient {
     client: Client,
-    base_url: String,
+    v1_base_url: String,
 }
 
 impl FireflyClient {
     pub fn new(base_url: &str) -> Self {
         Self {
             client: Client::new(),
-            base_url: format!("{base_url}/api/v1"),
+            v1_base_url: format!("{base_url}/api/v1"),
         }
     }
 
     pub async fn deploy_contract(&self, req: &DeployContractRequest) -> Result<ContractLocation> {
-        let url = format!("{}/contracts/deploy", self.base_url);
+        let url = format!("{}/contracts/deploy", self.v1_base_url);
         let res = self.client.post(url).json(req).send().await?;
         let res = Self::extract_error(res).await?;
         let body: DeployContractResponse = res.json().await?;
@@ -33,7 +33,7 @@ impl FireflyClient {
     }
 
     async fn try_get_interface(&self, name: &str, version: &str) -> Result<Option<Interface>> {
-        let url = format!("{}/contracts/interfaces/{name}/{version}", self.base_url);
+        let url = format!("{}/contracts/interfaces/{name}/{version}", self.v1_base_url);
         let res = self.client.get(url).send().await?;
         if res.status().as_u16() == 404 {
             return Ok(None);
@@ -44,7 +44,7 @@ impl FireflyClient {
     }
 
     async fn create_interface(&self, req: &ContractDefinition) -> Result<Interface> {
-        let url = format!("{}/contracts/interfaces", self.base_url);
+        let url = format!("{}/contracts/interfaces", self.v1_base_url);
         let res = self.client.post(url).json(req).send().await?;
         let res = Self::extract_error(res).await?;
         let body: Interface = res.json().await?;
@@ -52,7 +52,7 @@ impl FireflyClient {
     }
 
     async fn delete_interface(&self, id: &str) -> Result<()> {
-        let url = format!("{}/contracts/interfaces/{id}", self.base_url);
+        let url = format!("{}/contracts/interfaces/{id}", self.v1_base_url);
         let res = self.client.delete(url).send().await?;
         Self::extract_error(res).await?;
         Ok(())
@@ -67,7 +67,7 @@ impl FireflyClient {
     }
 
     async fn try_get_api(&self, name: &str) -> Result<Option<ApiResponse>> {
-        let url = format!("{}/apis/{name}", self.base_url);
+        let url = format!("{}/apis/{name}", self.v1_base_url);
         let res = self.client.get(url).send().await?;
         if res.status().as_u16() == 404 {
             return Ok(None);
@@ -78,7 +78,7 @@ impl FireflyClient {
     }
 
     async fn create_api(&self, req: &CreateApiRequest) -> Result<ApiResponse> {
-        let url = format!("{}/apis", self.base_url);
+        let url = format!("{}/apis", self.v1_base_url);
         let res = self.client.post(url).json(req).send().await?;
         let res = Self::extract_error(res).await?;
         let body: ApiResponse = res.json().await?;
@@ -86,7 +86,7 @@ impl FireflyClient {
     }
 
     async fn update_api(&self, req: &CreateApiRequest, id: &str) -> Result<ApiResponse> {
-        let url = format!("{}/apis/{id}", self.base_url);
+        let url = format!("{}/apis/{id}", self.v1_base_url);
         let res = self.client.put(url).json(req).send().await?;
         let res = Self::extract_error(res).await?;
         let body: ApiResponse = res.json().await?;
@@ -94,7 +94,7 @@ impl FireflyClient {
     }
 
     async fn poll_deploy_contract_location(&self, operation: &str) -> Result<ContractLocation> {
-        let url = format!("{}/operations/{operation}", self.base_url);
+        let url = format!("{}/operations/{operation}", self.v1_base_url);
         loop {
             let res = self.client.get(&url).send().await?;
             let res = Self::extract_error(res).await?;
