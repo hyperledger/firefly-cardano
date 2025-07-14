@@ -283,7 +283,7 @@ impl StreamDispatcherWorker {
         let mut batch_sink = None;
         loop {
             let (batch, ack_rx, last_op_id, hwms) = select! {
-                batch = self.build_batch(&mut operation_update_source), if batch_sink.is_some() && !self.listeners.is_empty() => batch,
+                batch = self.build_batch(&mut operation_update_source), if batch_sink.is_some() => batch,
                 Some(change) = state_change_source.recv() => {
                     match change {
                         StreamDispatcherStateChange::NewSettings(settings) => {
@@ -386,7 +386,7 @@ impl StreamDispatcherWorker {
         }
         while events.len() < self.batch_size {
             select! {
-                _ = self.collect_contract_events(hwms, events) => {}
+                _ = self.collect_contract_events(hwms, events), if !self.listeners.is_empty() => {}
                 Ok(()) = operation_update_source.changed() => {
                     self.collect_operation_events(last_op, events).await;
                 }
@@ -542,9 +542,11 @@ mod tests {
     use crate::{
         blockchain::BlockchainClient,
         contracts::ContractManager,
+        operations::{Operation, OperationId, OperationStatus},
         persistence,
         streams::{
-            BlockReference, Listener, ListenerFilter, ListenerType, Stream, mux::Multiplexer,
+            BatchEvent, BlockReference, Listener, ListenerFilter, ListenerType, Stream,
+            mux::Multiplexer,
         },
     };
     use firefly_server::apitypes::ApiError;
@@ -646,6 +648,48 @@ mod tests {
         assert_eq!(batch.batch_number, 1);
         assert_eq!(batch.events.len(), 5);
         assert_eq!(batch.events, old_events);
+
+        Ok(())
+    }
+
+    #[tokio::test]
+    async fn should_surface_operation_updates_without_listeners() -> Result<(), ApiError> {
+        let blockchain = Arc::new(BlockchainClient::mock().await);
+        let contracts = Arc::new(ContractManager::none());
+        let persistence = persistence::init(&persistence::PersistenceConfig::Mock).await?;
+        let operation_update_sink = watch::Sender::new(None);
+        let mux = Multiplexer::new(
+            blockchain.clone(),
+            contracts,
+            persistence.clone(),
+            operation_update_sink.clone(),
+        )
+        .await?;
+
+        let stream = Stream {
+            id: "stream_id".to_string().into(),
+            name: "Some Stream".into(),
+            batch_size: 5,
+            batch_timeout: Duration::from_millis(100),
+        };
+        persistence.write_stream(&stream).await?;
+        mux.handle_stream_write(&stream).await?;
+
+        let mut subscription = mux.subscribe("Some Stream").await?;
+
+        let operation = Operation {
+            id: OperationId::from("op".to_string()),
+            status: OperationStatus::Pending,
+            tx_id: None,
+            contract_address: None,
+        };
+
+        let update_id = persistence.write_operation(&operation).await?;
+        operation_update_sink.send_replace(Some(update_id));
+
+        let batch = subscription.recv().await.unwrap();
+        assert_eq!(batch.batch_number, 1);
+        assert_eq!(batch.events, vec![BatchEvent::Receipt(operation)]);
 
         Ok(())
     }
