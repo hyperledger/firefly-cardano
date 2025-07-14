@@ -31,6 +31,7 @@ async fn main() -> Result<()> {
         definition: serde_json::from_str(&definition_str)?,
     };
 
+    println!("Deploying contract to {}", args.firefly_url);
     let location = client.deploy_contract(&request).await?;
     println!("location: {}", serde_json::to_string(&location)?);
     let interface = client.deploy_interface(&request.definition).await?;
