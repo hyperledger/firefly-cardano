@@ -694,7 +694,11 @@ mod tests {
         batch.ack();
 
         // We don't receive any additional batches
-        assert!(timeout(Duration::from_millis(500), subscription.recv()).await.is_err());
+        assert!(
+            timeout(Duration::from_millis(500), subscription.recv())
+                .await
+                .is_err()
+        );
 
         // The checkpoint is updated
         let checkpoint = persistence.read_checkpoint(&stream.id).await?.unwrap();
