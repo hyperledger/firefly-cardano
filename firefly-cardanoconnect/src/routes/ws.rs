@@ -10,7 +10,7 @@ use axum::{
 };
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
-use tracing::{Level, error, instrument, warn};
+use tracing::{Level, error, info, instrument, warn};
 
 use crate::{
     AppState,
@@ -30,6 +30,7 @@ async fn handle_socket(
         IncomingMessage::Listen(ListenMessage { topic }) => topic,
         other => bail!("unexpected first message: {:?}", other),
     };
+    info!("caller listening on topic {topic}");
     let mut subscription = stream_manager.subscribe(&topic).await?;
 
     while let Some(batch) = subscription.recv().await {
@@ -238,7 +239,9 @@ pub async fn handle_socket_upgrade(
     State(app_state): State<AppState>,
     ws: WebSocketUpgrade,
 ) -> Response {
+    info!("Incoming websocket connection");
     ws.on_upgrade(|socket| async move {
+        info!("Websocket connection succeeded");
         if let Err(error) = handle_socket(app_state, socket).await {
             warn!("socket error: {:?}", error);
         }
