@@ -550,7 +550,7 @@ mod tests {
         },
     };
     use firefly_server::apitypes::ApiError;
-    use tokio::sync::watch;
+    use tokio::{sync::watch, time::timeout};
 
     #[tokio::test]
     async fn should_ack_events() -> Result<(), ApiError> {
@@ -685,11 +685,20 @@ mod tests {
         };
 
         let update_id = persistence.write_operation(&operation).await?;
-        operation_update_sink.send_replace(Some(update_id));
+        operation_update_sink.send_replace(Some(update_id.clone()));
 
+        // We receive a new batch with the operation update
         let batch = subscription.recv().await.unwrap();
         assert_eq!(batch.batch_number, 1);
         assert_eq!(batch.events, vec![BatchEvent::Receipt(operation)]);
+        batch.ack();
+
+        // We don't receive any additional batches
+        assert!(timeout(Duration::from_millis(500), subscription.recv()).await.is_err());
+
+        // The checkpoint is updated
+        let checkpoint = persistence.read_checkpoint(&stream.id).await?.unwrap();
+        assert_eq!(checkpoint.last_operation_id, Some(update_id));
 
         Ok(())
     }
