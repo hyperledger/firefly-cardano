@@ -61,5 +61,5 @@ async fn main() -> Result<()> {
         .api_route("/health", get(health))
         .api_route("/sign", post(sign_transaction))
         .with_state(state);
-    firefly_server::server::serve(&config.api, router).await
+    firefly_server::server::serve(&config.api, [("v1", router)]).await
 }
