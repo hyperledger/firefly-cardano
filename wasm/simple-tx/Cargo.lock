@@ -81,8 +81,8 @@ dependencies = [
 
 [[package]]
 name = "balius-macros"
-version = "0.3.4"
-source = "git+https://github.com/txpipe/balius?rev=32be194#32be194f38ab8a84b0f5fee31db4442ef302695f"
+version = "0.4.0"
+source = "git+https://github.com/txpipe/balius?rev=3f39b1a#3f39b1ad365078323862b1d8614346c0bd37cde5"
 dependencies = [
  "quote",
  "syn",
@@ -90,8 +90,8 @@ dependencies = [
 
 [[package]]
 name = "balius-sdk"
-version = "0.3.4"
-source = "git+https://github.com/txpipe/balius?rev=32be194#32be194f38ab8a84b0f5fee31db4442ef302695f"
+version = "0.4.0"
+source = "git+https://github.com/txpipe/balius?rev=3f39b1a#3f39b1ad365078323862b1d8614346c0bd37cde5"
 dependencies = [
  "balius-macros",
  "hex",
