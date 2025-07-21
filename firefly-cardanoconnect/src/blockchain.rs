@@ -7,7 +7,7 @@ use crate::{
 use anyhow::{Result, bail};
 use async_trait::async_trait;
 use balius_runtime::ledgers::{
-    CustomLedger, Ledger, LedgerError, TxoRef, Utxo, UtxoPage, UtxoPattern,
+    Ledger, LedgerError, LedgerProvider, TxoRef, Utxo, UtxoPage, UtxoPattern,
 };
 use blockfrost::Blockfrost;
 use mocks::MockChain;
@@ -233,7 +233,7 @@ struct LedgerWrapper<T: BaliusLedger> {
 }
 
 #[async_trait]
-impl<T: BaliusLedger + Send> CustomLedger for LedgerWrapper<T> {
+impl<T: BaliusLedger + Send> LedgerProvider for LedgerWrapper<T> {
     async fn read_utxos(&mut self, mut refs: Vec<TxoRef>) -> Result<Vec<Utxo>, LedgerError> {
         refs.sort_by(|l, r| l.tx_hash.cmp(&r.tx_hash).then(l.tx_index.cmp(&r.tx_index)));
 

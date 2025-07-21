@@ -12,7 +12,7 @@ aide = { version = "0.14", features = ["axum", "axum-json", "axum-query"] }
 anyhow = "1"
 async-trait = "0.1"
 axum = { version = "0.8", features = ["macros", "ws"] }
-balius-runtime = { git = "https://github.com/txpipe/balius", rev = "32be194", default-features = false, features = ["rustls-tls"] }
+balius-runtime = { git = "https://github.com/txpipe/balius", rev = "3f39b1a", default-features = false, features = ["rustls-tls"] }
 blockfrost = { git = "https://github.com/blockfrost/blockfrost-rust.git", rev = "1877c38", default-features = false, features = ["rustls-tls"] }
 blockfrost-openapi = "0.1.69"
 clap = { version = "4", features = ["derive"] }
