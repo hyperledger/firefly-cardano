@@ -5,6 +5,7 @@ use aide::axum::{
     routing::{get, post},
 };
 use anyhow::Result;
+use axum::extract::DefaultBodyLimit;
 use blockchain::BlockchainClient;
 use clap::Parser;
 use config::{CardanoConnectConfig, load_config};
@@ -122,6 +123,7 @@ async fn main() -> Result<()> {
         )
         .api_route("/chain/tip", get(get_chain_tip))
         .route("/ws", axum::routing::get(handle_socket_upgrade))
+        .route_layer(DefaultBodyLimit::max(10 * 1024 * 1024))
         .with_state(state);
 
     firefly_server::server::serve(&config.api, [("v1", router)]).await
